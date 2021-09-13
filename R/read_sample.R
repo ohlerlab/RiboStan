@@ -1,18 +1,41 @@
+library(tidyverse)
+library(magrittr)
+library(GenomicRanges)
+library(Matrix)
 id <- function(cov)match(cov,unique(cov))
-
+#
 ribobam <- '../cortexomics/pipeline/star_transcript/data/E13_ribo_1/E13_ribo_1.bam'
 gtf <- rtracklayer::import('../cortexomics/ext_data/gencode.vM12.annotation.gtf')
 tr2gid<-gtf%>%mcols%>%.[,c('gene_id','transcript_id')]%>%as.data.frame%>%distinct%>%filter(!is.na(transcript_id))%>%
 	{setNames(.$gene_id,.$transcript_id)}
-
+#
 ribogr <- GenomicAlignments::readGAlignments(ribobam,use.names=T)
 seqlevels(ribogr)%<>%str_replace('\\|.*','')
 names(ribogr) %<>% match(.,unique(.))
 mcols(ribogr)$readlen <-  GenomicAlignments::qwidth(ribogr)
 ribogr%<>%as("GenomicRanges")
 
-library(GenomicFeatures)
+seqnames(ribogr)[1:10000]%>%head(3)%>%id
 
+
+tridrle <- seqnames(ribogr)%>%id
+rdnmsrle <- Rle(names(ribogr))
+
+
+inds=1:1e6
+#
+eqclasses=split(tridrle[inds],rdnmsrle[inds])
+#
+str_eqclasses<-eqclasses	%>%
+	lapply(function(x){ out=x%>%	
+		# {matrix(c(runLength(.),runValue(.)),byrow=T,nrow=2)%>%paste0(.,collapse=',')}
+		{runValue(.)%>%paste0(.,collapse=',')}
+		# stopifnot(is.character(out))
+	})
+#
+eqclasscounts <- str_eqclasses%>%unlist%>%table
+
+library(GenomicFeatures)
 
 
 exonsgrl<-gtf%>%subset(type=='exon')%>%split(.,.$transcript_id)
@@ -32,7 +55,6 @@ if(seqnames(ribogr)%>%head(1)%>%str_detect('chr')){
 	cov<-ribogr
 	cov <- sort(cov)	
 }
-
 library(Matrix)
 spmat <- sparseMatrix(
 	i=names(cov)%>%as.numeric%>%id,
@@ -217,7 +239,7 @@ wfdata=list(
 	),byrow=T,ncol=2)
  ,
  classweights = c(tratio*250,1000,250),
- trlen = c(1000+c(1000,1000))
+ trlen = c(1000+c(1000,1000))ls
 )
 wfdata<-c(wfdata,wfdata$map%>%extract_sparse_parts)
 wfdata$trlen %<>% {./sum(.)}
@@ -252,5 +274,41 @@ s_spmat <- summary(tspmat)
 stopifnot(s_spmat$j%>%isSorted)
 stopifnot(s_spmat$j%>%max%>%`>`(100e3))
 
+
 #TODO now write the code for sampling the matrix in a weighted way once
-#we have tpms.
+#we have tpms. 
+# spmat<-Matrix(c(0,1,0,0 
+# 								,1,0,0,1, 
+# 								 0,3,0,1,
+# 								 0,1,1,1,
+# 								 0,1,1,50),nrow=5,ncol=4,byrow=T,sparse=T)
+# spmat@i#0 indexed row
+# spmat@p#initial element for each column, 0 based.
+# spmat@x
+#take in a sparse matrix - sample one value from each of it's columns,
+#weighted by the value of those columns
+sample_cols_spmat <- function(spmat){
+	#so I think p gives us element which is the final one for each 
+	matsum <- summary(spmat)
+	cs <- cumsum(spmat@x)
+	colsums <- colSums(spmat)
+	pts <- spmat@p
+	prevcs <- c(0,cs[pts%>%tail(-1)])[matsum$j]
+	cs = cs - prevcs
+	xold <- spmat@x
+	spmat@x <- cs
+	spmat
+	spmatnm = t(t(spmat) / colsums)
+	passrand <- runif(spmat@x%>%length) < spmatnm@x 
+	spmat@x <- xold
+	spmat@x = spmat@x * passrand
+	pass_summ = summary(spmat)
+	pass_summ = pass_summ[pass_summ$x!=0,]
+	pass_summ = as.data.frame(pass_summ)[diff(c(0,pass_summ$j))>0,]
+	outmat = sparseMatrix(i=pass_summ$i,j=pass_summ$j,x=pass_summ$x,dims=dim(spmat))
+	stopifnot(dim(outmat)==c(5,4))
+	outmat	
+}
+#spmat
+
+
