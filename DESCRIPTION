@@ -1,5 +1,5 @@
 Package: RiboEM
-Title: What the Package Does (One Line, Title Case)
+Title: Estimates RPF Footprint Densities
 Version: 0.0.0.9000
 Authors@R: 
     person(given = "First",
@@ -14,3 +14,11 @@ Encoding: UTF-8
 LazyData: true
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.1.1
+Imports:
+    data.table
+    GenomicAlignments
+    rtracklayer
+    rstan
+    Matrix
+    MatrixStats
+    magrittr
