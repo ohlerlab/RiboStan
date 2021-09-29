@@ -59,7 +59,6 @@ filter_anno <- function(anno){
 		trspacecds <- trspacecds%>%unlist
 		stopifnot(all(ribocovtrs==names(trspacecds)))		
 
-		inclusiontable(names(trspacecds),ribocovtrs)
 
 		#
 		cdsstarts = trspacecds%>%start%>%setNames(names(trspacecds))
@@ -128,8 +127,8 @@ process_ribogr <- function(ribobam, strip_seqnames=TRUE){
 
 
 get_cds_reads<-function(cov, anno){
-	cdsgrl <- anno%>%subset(type=='CDS')%>%split(.,.$transcript_id)
-	exonsgrl <- anno%>%subset(type=='exon')%>%split(.,.$transcript_id)
+	cdsgrl <- anno$anno%>%subset(type=='CDS')%>%split(.,.$transcript_id)
+	exonsgrl <- anno$anno%>%subset(type=='exon')%>%split(.,.$transcript_id)
 	#
 	ribocovtrs <- names(cdsgrl)
 	#
@@ -147,7 +146,7 @@ get_cds_reads<-function(cov, anno){
 get_readgr<-function(ribobam, anno, strip_seqnames=TRUE){
 	bamseqnames <- seqinfo(Rsamtools::BamFile(ribobam))@seqnames
 	if(strip_seqnames) bamseqnames%<>%str_replace('\\|.*','')
-	stopifnot(mean(unique(anno$transcript_id) %in% bamseqnames)>.9)
+	stopifnot(mean(unique(anno$anno$transcript_id) %in% bamseqnames)>.9)
 	cov <- process_ribogr(ribobam)
 	cov <- get_cds_reads(cov, anno)
 	cov

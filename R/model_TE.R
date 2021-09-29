@@ -1,23 +1,3 @@
-
-
-
-if(!file.exists('data/txcodposdf.rds')) {
-	fafileob <- Rsamtools::FaFile(fafile)
-	bestcdsseq = cdsgrl[ribocovtrs]%>%
-		sort_grl_st%>%
-		GenomicFeatures::extractTranscriptSeqs(x=fafileob,.)
-	#
-	codposdf = lapply(bestcdsseq,function(cdsseq){
-		codonmat = codons(cdsseq)%>%
-			{cbind(pos = .@ranges@start,as.data.frame(.))}%>%
-			identity
-	})
-	codposdf%<>%bind_rows(.id='transcript_id')
-	codposdf%>%saveRDS(here('data/txcodposdf.rds'))
-}else{
-	codposdf<-readRDS(here('data/txcodposdf.rds'))
-}
-
 get_codposdf <- function(ribocovtrs, anno, fafile){
 	#
 	fafileob <- Rsamtools::FaFile(fafile)
@@ -40,7 +20,7 @@ get_codposdf <- function(ribocovtrs, anno, fafile){
 get_psitecov <- function(sampled_cov_gr, offsets_df, anno){
 	offsets <- sampled_cov_gr%>%
 		# subset(readlen %in% offsets_df$readlen)%>%
-		addphase(cdsstarts)%>%
+		addphase(anno$cdsstarts)%>%
 		{as.data.frame(mcols(.)[,c('readlen', 'phase')])}%>%
 		left_join(
 			offsets_df%>%select(readlen,phase,offset),
@@ -91,50 +71,134 @@ get_sitedf<-function(psitecov, anno, fafile,stop_codons=c('TAA','TAG','TGA')){
 	sitedf
 }
 
-psitecov <- get_psitecov(sampled_cov_gr, offsets_df, anno)
-psitecov <- psitecov[psitecov%>%sum%>%`<`(10)]
+codonstrengths = setNames(100+seq_along(names(GENETIC_CODE)),names(GENETIC_CODE))
+codonstrengths%<>%{./median(.)}
 
-#debug
-zeropsitetrs <- psitecov%>%sum%>%keep(equals,0)%>%names
-zeropsitetr=zeropsitetrs[1]
-tpms[zeropsitetr]
-cov%>%subset(seqnames==zeropsitetr)
-trspacecds[zeropsitetr]
-sampled_cov_gr%>%subset(seqnames==zeropsitetr)
-tpms[zeropsitetr]
-
-
-################################################################################
-########## 
-################################################################################
-
-testr='ENST00000598261.2'
-
-
-
-psitecov <- psitecov%>%sample(100)
-
-sitedf <- get_sitedf(psitecov%>%sample(100), anno, fafile)
-library(MASS)
-
-codglmfit = glm.nb(
-	data=sitedf,
-	formula= count ~ 0 + transcript_id + p_codon+a_codon)
-
-glmfits = lapply(sections,function(section){
-	# 
-	tnt_entrop_cds <- sum(psitecov)[is3nt]%>%order(decreasing=TRUE)%>%.[section]
+get_codon_occs <- function(sampled_cov_gr, offsets_df,
+		anno, n_genes=1000, method='linear'){
 	#
-	testpsitecovs = c(psitecov[is3nt][tnt_entrop_cds])
+	allpsitecov <- get_psitecov(sampled_cov_gr, offsets_df, anno)
 	#
-	sitedf = get_sitedf(testpsitecovs,codposdf%>%split(.,.$transcript_id))
 	#
+	psitecov <- allpsitecov[allpsitecov%>%sum%>%`<`(10)]
+	toptrs = psitecov%>%mean%>%sort%>%tail(n_genes)%>%names
+	#
+	psitecov <- psitecov[toptrs]
+	#
+	sitedf <- get_sitedf(psitecov, anno, fafile)
 	library(MASS)
-	message('fit')
-	codglmfit = glm.nb(
-		data=sitedf,
-		formula= count ~ 0 + gene + codon+a_codon+phase)
-	message('done')
-	codglmfit
-})
+	#
+	# message('faking data')
+	# sitedf$count = 100
+	# sitedf$count = sitedf$count * codonstrengths[sitedf$p_codon]
 
+	sitedf%<>%group_by(transcript_id)%>%mutate(trmean = mean(count))
+	sitedf = sitedf%<>%filter(trmean!=0)
+
+	#
+	if(method =='linear'){
+		fit = glm.nb(
+			data=sitedf,
+			formula= count ~ 0 + offset(log(trmean)) + p_codon + a_codon
+		)
+		#
+		codon_occ_df <- broom::tidy(fit)%>%as.data.frame%>%
+			mutate(codon=term%>%str_replace('[pa]_codon',''))%>%
+			mutate(position=term%>%str_extract('^[pa]_codon'))%>%
+			mutate(lower = estimate - 1.96*std.error)%>%
+			mutate(upper = estimate + 1.96*std.error)
+		codon_occ_df
+		# codon_occ_df%>%filter(position=='p_codon')%>%
+		# 	mutate(comp=codonstrengths[codon])%>%
+		# 	{txtplot(.$comp,exp(.$estimate))}
+
+	} else if(method=='RUST_glm'){
+		sitedf%<>%mutate(rust=count > trmean,trmean = mean(rust))
+		fit = glm(
+			data=sitedf,
+			formula= rust ~ 0 + offset(log(trmean)) + p_codon + a_codon
+		)
+		codon_occ_df <- broom::tidy(fit)%>%as.data.frame%>%
+			mutate(codon=term%>%str_replace('[pa]_codon',''))%>%
+			mutate(position=term%>%str_extract('^[pa]_codon'))%>%
+			mutate(lower = estimate - 1.96*std.error)%>%
+			mutate(upper = estimate + 1.96*std.error)
+		codon_occ_df
+	} else if(method='RUST'){
+
+	}
+	else{
+		p_ests = sitedf%>%group_by(p_codon)%>%
+			summarise(estimate = sum(count)/sum(trmean))%>%
+			setNames(c('codon','estimate'))%>%
+			mutate(position = 'p')
+		a_ests = sitedf%>%group_by(p_codon)%>%
+			summarise(estimate = sum(count)/sum(trmean))%>%
+			setNames(c('codon','estimate'))%>%
+			mutate(position = 'a')
+		codon_occ_df = bind_rows(p_ests,a_ests)
+		codon_occ_df%<>%mutate(upper=NA,lower=NA,p.value=NA)
+		codon_occ_df
+	}
+	codon_occ_df%>%
+		select(codon,position,estimate,upper,lower,p.value)
+}
+
+linear_codon_occ_df <- get_codon_occs(sampled_cov_gr, offsets_df, anno, n_genes=1000, method='linear')
+rust_codon_occ_df <- get_codon_occs(sampled_cov_gr, offsets_df, anno, n_genes=1000, method='RUST_glm')
+
+
+rust_codon_occ_df%>%
+	inner_join(linear_codon_occ_df,by=c('codon','position'))%>%
+	filter(position=='a_codon')%>%
+	filter(!codon%in%c('TAG','TAA','TGA'))%>%
+	{cor.test(.$estimate.x,.$estimate.y)}
+	{txtplot(.$estimate.x,.$estimate.y)}
+
+
+
+#this probably needs to take an actual model object.
+get_predicted_codon_occs <- function(anno, fafile){
+
+	#
+	cdsgrl <- anno$anno%>%subset(type=='CDS')%>%
+		split(.,.$transcript_id)
+	#
+	fafileob <- Rsamtools::FaFile(fafile)
+	#
+	elongtrs <- unique(anno$anno$transcript_id)
+	elongtrs = elongtrs%<>%sample(1e3)
+	#
+	bestcdsseq = cdsgrl[elongtrs]%>%
+		sort_grl_st%>%
+		GenomicFeatures::extractTranscriptSeqs(x=fafileob,.)
+
+	codonfreqdf = bestcdsseq%>%oligonucleotideFrequency(3,step = 3)%>%
+		set_rownames(names(bestcdsseq))%>%
+		{.=./rowSums(.);.}%>%
+		as.data.frame%>%rownames_to_column('transcript_id')%>%
+		pivot_longer(-transcript_id,names_to='codon',values_to='freq')
+}
+
+
+sitedf = get_sitedf(psitecovsfit,codposdf%>%split(.,.$protein_id)%>%.[names(psitecovsfit)])
+
+get_codposdf <- function(ribocovtrs, anno, fafile){
+	#
+	fafileob <- Rsamtools::FaFile(fafile)
+	#
+	cdsgrl <- anno%>%subset(type=='CDS')%>%
+		split(.,.$transcript_id)
+	#
+	bestcdsseq = cdsgrl[ribocovtrs]%>%
+		sort_grl_st%>%
+		GenomicFeatures::extractTranscriptSeqs(x=fafileob,.)
+	#
+	codposdf = lapply(bestcdsseq,function(cdsseq){
+		codonmat = codons(cdsseq)%>%
+			{cbind(pos = .@ranges@start,as.data.frame(.))}%>%
+			identity
+	})
+	codposdf%<>%bind_rows(.id='transcript_id')
+	codposdf
+}
