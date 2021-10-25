@@ -6,101 +6,102 @@ library(Matrix)
 ################################################################################
 ########## 
 ################################################################################
-filter_anno <- function(anno){
-
+filter_anno <- function(anno, fafile){
 	filt_anno <- anno
-
-	{
-		require(Biostrings)
-		#find which cds are multiples of 3bp
-		cdsgrl <- filt_anno%>%subset(type=='CDS')%>%split(.,.$transcript_id)
-		is3bp = cdsgrl%>%width%>%sum%>%`%%`(3)%>%`==`(0)	
-		ribocovtrs = names(cdsgrl)[is3bp]
-		#subset cds and anno with these
-		cdsgrl <- cdsgrl[ribocovtrs]
-		filt_anno = filt_anno%>%
-			subset(type!='CDS')%>%
-			subset(transcript_id%in%ribocovtrs)
-		#chceck if the cds includes the stop codon
-		fafileob = Rsamtools::FaFile(fafile)
-		cdsgrl%<>%sort_grl_st
-		cdsseqends = cdsgrl%>%
-			resize_grl(3,'end')%>% 
-			resize_grl(sum(width(.))+3)%>%
-			GenomicFeatures::extractTranscriptSeqs(x=fafileob,.)
-		#some sequences have spaces (ends of chrs i think)	
-		filterchars = cdsseqends%>%str_detect('[^ATCG]')
-		cdsseqends[filterchars] = 'AAAAAA'
-		cdsseqends %<>% translate
-		stopifnot(cdsseqends%>%nchar%>%is_in(2))
-		# cdsseqends = cdsseqends[nchar(cdsseqends)==2]
-		#
-		end_stop = table(subseq(cdsseqends,1,1))%>%sort%>%
-			{./sum(.)}%>%.['*']%>%`>`(0.5)
-		end_plusone_stop = table(subseq(cdsseqends,2,2))%>%sort%>%
-			{./sum(.)}%>%.['*']%>%`>`(0.5)
-		stopifnot(end_stop|end_plusone_stop)
-		#
-		endseq = if(end_plusone_stop){ subseq(cdsseqends,2,2) }else{
-		 subseq(cdsseqends,1,1)
-		}
-		#set the cds_prestop_st as the 1st nuc of the last non-stop codon
-		#
-		exonsgrl <- filt_anno%>%
-			subset(type=='exon')%>%
-			split(.,.$transcript_id)%>%
-			.[ribocovtrs]
-		stopifnot(all(ribocovtrs==names(cdsgrl)))
-		stopifnot(all(ribocovtrs==names(exonsgrl)))
-		trspacecds = GenomicFeatures::pmapToTranscripts(
-			cdsgrl[ribocovtrs],
-			exonsgrl[ribocovtrs])
-		stopifnot(all(ribocovtrs==names(trspacecds)))		
-		trspacecds <- trspacecds%>%unlist
-		stopifnot(all(ribocovtrs==names(trspacecds)))		
-
-
-		#
-		cdsstarts = trspacecds%>%start%>%setNames(names(trspacecds))
-		#
-		if(end_stop) cdsgrl <- cdsgrl%>%resize_grl(sum(width(.))-3,'start')
-		stopifnot(all(ribocovtrs==names(cdsgrl)))
-		filt_anno = c(filt_anno,unlist(cdsgrl))
-		#now only those which have M at the start and '*' at the end
-		cdsseqstarts = cdsgrl%>%
-			sort_grl_st%>%
-			resize_grl(3,'start')%>% 
-			GenomicFeatures::extractTranscriptSeqs(x=fafileob,.)%>%
-			Biostrings::translate(.)
-		#	
-		#	
-		hasMstart = cdsseqstarts[ribocovtrs]=='M'
-		hasStop = endseq[ribocovtrs]=='*'
-
-		ribocovtrs = ribocovtrs[hasMstart & hasStop]
-		outanno = list(
-			ribocovtrs=ribocovtrs,
-			trspacecds=trspacecds[ribocovtrs])
-		outanno = c(outanno,
-			list(cdsstarts = outanno$trspacecds%>%start%>%
-				setNames(names(outanno$trspacecds)),
-			cds_prestop_st = outanno$trspacecds%>%end%>%`-`(2)%>%
-				setNames(names(outanno$trspacecds)),
-			anno = filt_anno%>%subset(transcript_id%in%ribocovtrs)		
-		))
-	}
+	require(Biostrings)
+	#find which cds are multiples of 3bp
+	cdsgrl <- filt_anno%>%subset(type=='CDS')%>%split(.,.$transcript_id)
+	is3bp = cdsgrl%>%width%>%sum%>%`%%`(3)%>%`==`(0)	
+	ribocovtrs = names(cdsgrl)[is3bp]
+	#subset cds and anno with these
+	cdsgrl <- cdsgrl[ribocovtrs]
+	filt_anno = filt_anno%>%
+		subset(type!='CDS')%>%
+		subset(transcript_id%in%ribocovtrs)
+	#chceck if the cds includes the stop codon
+	fafileob = Rsamtools::FaFile(fafile)
+	cdsgrl%<>%sort_grl_st
+	cdsseqends = cdsgrl%>%
+		resize_grl(3,'end')%>% 
+		resize_grl(sum(width(.))+3)%>%
+		GenomicFeatures::extractTranscriptSeqs(x=fafileob,.)
+	#some sequences have spaces (ends of chrs i think)	
+	filterchars = cdsseqends%>%str_detect('[^ATCG]')
+	cdsseqends[filterchars] = 'AAAAAA'
+	cdsseqends %<>% translate
+	stopifnot(cdsseqends%>%nchar%>%is_in(2))
+	# cdsseqends = cdsseqends[nchar(cdsseqends)==2]
+	#
+	end_stop = table(subseq(cdsseqends,1,1))%>%sort%>%
+		{./sum(.)}%>%.['*']%>%`>`(0.5)
+	if(is.na(end_stop)) end_stop = FALSE
+	end_plusone_stop = table(subseq(cdsseqends,2,2))%>%sort%>%
+		{./sum(.)}%>%.['*']%>%`>`(0.5)
+	stopifnot(end_stop|end_plusone_stop)
+	#
+	endseq = if(end_plusone_stop){ subseq(cdsseqends,2,2) }else{
+	 subseq(cdsseqends,1,1)}
+	#set the cds_prestop_st as the 1st nuc of the last non-stop codon
+	#
+	exonsgrl <- filt_anno%>%
+		subset(type=='exon')%>%
+		split(.,.$transcript_id)%>%
+		.[ribocovtrs]
+	stopifnot(all(ribocovtrs==names(cdsgrl)))
+	stopifnot(all(ribocovtrs==names(exonsgrl)))
+	trspacecds = GenomicFeatures::pmapToTranscripts(
+		cdsgrl[ribocovtrs],
+		exonsgrl[ribocovtrs])
+	stopifnot(all(ribocovtrs==names(trspacecds)))		
+	trspacecds <- trspacecds%>%unlist
+	stopifnot(all(ribocovtrs==names(trspacecds)))		
+	#
+	cdsstarts = trspacecds%>%start%>%setNames(names(trspacecds))
+	#
+	if(end_stop) cdsgrl <- cdsgrl%>%resize_grl(sum(width(.))-3,'start')
+	stopifnot(all(ribocovtrs==names(cdsgrl)))
+	filt_anno = c(filt_anno,unlist(cdsgrl))
+	#now only those which have M at the start and '*' at the end
+	cdsseqstarts = cdsgrl%>%
+		sort_grl_st%>%
+		resize_grl(3,'start')%>% 
+		GenomicFeatures::extractTranscriptSeqs(x=fafileob,.)%>%
+		Biostrings::translate(.)
+	#	
+	#	
+	hasMstart = cdsseqstarts[ribocovtrs]=='M'
+	hasStop = endseq[ribocovtrs]=='*'
+	#
+	ribocovtrs = ribocovtrs[hasMstart & hasStop]
+	outanno = list(
+		ribocovtrs=ribocovtrs,
+		trspacecds=trspacecds[ribocovtrs])
+	outanno = c(outanno,
+		list(cdsstarts = outanno$trspacecds%>%start%>%
+			setNames(names(outanno$trspacecds)),
+		cds_prestop_st = outanno$trspacecds%>%end%>%`-`(2)%>%
+			setNames(names(outanno$trspacecds)),
+		anno = filt_anno%>%subset(transcript_id%in%ribocovtrs)		
+	))
 	return(outanno)
 }
 
 
-id <- function(cov)match(cov,unique(cov))
+id <- function(cov) BiocGenerics::match(cov,unique(cov))
 
 
 
 process_ribogr <- function(ribobam, strip_seqnames=TRUE){
 	#
-	ribogr <- GenomicAlignments::readGAlignments(ribobam,use.names=T)
+	require(Rsamtools)
+	require(GenomicAlignments)
+	bparam <- ScanBamParam(simpleCigar = TRUE,scanBamFlag(isUnmappedQuery = FALSE, 
+		isMinusStrand = FALSE, ))
+	ribogr <- GenomicAlignments::readGAlignments(ribobam,use.names=T,param=bparam)
 	#
+	wfilt = qwidth(ribogr)<=35 & (20<=qwidth(ribogr))
+	ribogr = ribogr[wfilt]
+	# this is the number get_bamdf gets in py 4628644
 	names(ribogr) %<>% id
 	mcols(ribogr)$readlen <-  GenomicAlignments::qwidth(ribogr)
 	ribogr%<>%as("GenomicRanges")
@@ -121,34 +122,26 @@ process_ribogr <- function(ribobam, strip_seqnames=TRUE){
 		cov <- sort(cov)	
 	}
 	#name the reads with integers as they appear in the sorted object
-	names(cov)%<>%id
+	# names(cov)%<>%id
 	cov	
 }
 
-
 get_cds_reads<-function(cov, anno){
-	cdsgrl <- anno$anno%>%subset(type=='CDS')%>%split(.,.$transcript_id)
-	exonsgrl <- anno$anno%>%subset(type=='exon')%>%split(.,.$transcript_id)
-	#
-	ribocovtrs <- names(cdsgrl)
-	#
-	trspacecds <- GenomicFeatures::pmapToTranscripts(
-		cdsgrl[ribocovtrs],exonsgrl[ribocovtrs])
-	trspacecds <- trspacecds %>% unlist
-	valid_cds <-  names(trspacecds)==names(cdsgrl)
-	stopifnot(valid_cds)
+	trspacecds <- anno$trspacecds
+	sharedseqnames <- unique(seqnames(trspacecds))%>%intersect(seqnames(cov))
+	cov <-  cov%>%keepSeqlevels(sharedseqnames,pruning='coarse')
+	seqlevels(cov) <- seqlevels(trspacecds)
+	seqinfo(cov) <- seqinfo(trspacecds)
 	cov <- cov %>% subsetByOverlaps(trspacecds)
-	names(cov)%<>%id
-	cov
 }
-	
-
 get_readgr<-function(ribobam, anno, strip_seqnames=TRUE){
 	bamseqnames <- seqinfo(Rsamtools::BamFile(ribobam))@seqnames
 	if(strip_seqnames) bamseqnames%<>%str_replace('\\|.*','')
-	stopifnot(mean(unique(anno$anno$transcript_id) %in% bamseqnames)>.9)
+	stopifnot(mean(unique(seqnames(anno$trspacecds)) %in% bamseqnames)>.9)
 	cov <- process_ribogr(ribobam)
 	cov <- get_cds_reads(cov, anno)
+	#4542346 is the number cds filtering gets us down to in py
+	names(cov)%<>%id
 	cov
 }
 
@@ -187,12 +180,13 @@ get_cds_profile <- function(cov,trspacecds){
 get_read_spmat <- function(cov){
 	require(Matrix)
 
-	spmat <- sparseMatrix(
+	spmat <- Matrix::sparseMatrix(
 		i=names(cov)%>%as.numeric,
 		j=seqnames(cov)%>%id%>%as.vector,
 		x=1
 	)
 	colnames(spmat) <- seqnames(cov)%>%unique
+	spmat = spmat / Matrix::rowSums(spmat)
 	spmat
 }
 
@@ -209,16 +203,10 @@ get_read_spmat <- function(cov){
 optimize_tpms<-function(spmat, anno, iternum=500){
 	require(rstan)
 	#
-	trlens <- anno%>%subset(type=='CDS')%>%
-		split(.,.$transcript_id)%>%
-		.[colnames(spmat)]%>%
-		width%>%sum
-	trlens <- anno%>%subset(type=='exon')%>%
-		split(.,.$transcript_id)%>%
-		.[colnames(spmat)]%>%
-		width%>%sum
+	trlens <- anno$trspacecds%>%width%>%
+		setNames(names(anno$trspacecds))
 	#now let's try the whole shebang in rstan
-	sptrlens <- trlens[unique(cov@seqnames)%>%as.character]
+	sptrlens <- trlens[colnames(spmat)]
 	fdata<-list(trlen=sptrlens)
 	fdata<-c(fdata,spmat%>%rstan::extract_sparse_parts(.))
 	fdata$trlen %<>% {./sum(.)}
@@ -227,17 +215,37 @@ optimize_tpms<-function(spmat, anno, iternum=500){
 	fdata$V <- fdata$w%>%length
 	fdata$Ulen <- fdata$u%>%length
 	fdata$classweights <- rep(1,fdata$R)
-	init = list(tpm=spmat%>%colSums%>%{./sum(.)})
-	spmat%>%colSums%>%max
+	init = list(tpm=spmat%>%{Matrix::colSums(.)}%>%`/`(fdata$trlen)%>%{./sum(.)})
 	#
-	eqtpm_mod <- rstan::stan_model(file='src/sparse_eq_tpm_opt.stan')
+	modelcode = '
+		data {
+		  int TR;// number of TRs
+		  int R;// number of reads
+		  int V;
+		  int Ulen;
+		  vector [V] w ;
+		  int  v [V];
+		  int   u [Ulen];
+		  vector [R] classweights;
+		}
+		parameters {
+		  simplex [TR] n;
+		}
+		model {
+		    target += log(
+		      csr_matrix_times_vector(R, TR, w, v, u, n)
+		    ).* classweights;
+		}
+	'
+	eqtpm_mod <- rstan::stan_model(model_code = modelcode)
 	opt <- rstan::optimizing(
 		eqtpm_mod,
 		data=fdata,
-		# init=init,
-		verbose=TRUE,
+		init=init,
+		verbose=FALSE,
 		iter=iternum)
 	opt$seqnames <- colnames(spmat)
+	opt$trlen <- fdata$trlen
 	opt
 }
 
@@ -323,11 +331,21 @@ sample_cols_spmat <- function(spmat,return_mat=T){
 
 
 get_tpms <- function(tpm_opt){
-	tpmpars <- tpm_opt$par%>%names%>%str_subset('^tpm\\[\\d+\\]$')
-	tpms <- tpm_opt$par[tpmpars]
-	names(tpms) <- tpm_opt$seqnames
-	tpms <- tpms * 1e6
-	tpms
+	if(tpm_opt$par%>%names%>%str_detect('^tpm\\[\\d+\\]$')%>%any){
+		tpmpars <- tpm_opt$par%>%names%>%str_subset('^tpm\\[\\d+\\]$')
+		tpms <- tpm_opt$par[tpmpars]
+		names(tpms) <- tpm_opt$seqnames
+		tpms <- tpms * 1e6
+		tpms	
+	}else{
+		tpmpars <- tpm_opt$par%>%names%>%str_subset('^n\\[\\d+\\]$')
+		tpms <- tpm_opt$par[tpmpars]
+		names(tpms) <- tpm_opt$seqnames
+		tpms = tpms / tpm_opt$trlen
+		tpms = tpms / sum(tpms)
+		tpms <- tpms * 1e6
+		tpms	
+	}
 }
 
 #' sample_cov_gr
@@ -353,4 +371,62 @@ sample_cov_gr <- function(cov, tpms){
 	#
 	sampcov
 }
+
+
+gene_level_expr <- function(tpms, anno){
+	trgiddf = anno$trgiddf
+		#
+	gn_expr=left_join(
+		trgiddf,
+		enframe(tpms, 'transcript_id', 'tpm'),
+		by='transcript_id')
+	#	
+	gn_expr%<>%group_by(gene_id)%>%summarise(expr = sum(replace_na(tpm,0)))
+	gn_expr%>%select(gene_id, expr)
+}
+
+get_ribofasta_anno <- function(ribofasta){
+	Rsamtools::indexFa(ribofasta)
+	faheadernames <- seqinfo(Rsamtools::FaFile(ribofasta))
+	faheaddf=seqnames(faheadernames)%>%as.vector%>%str_split_fixed('\\|',10)
+	anno = list()
+	anno$trspacecds = GRanges(faheaddf[,1],faheaddf[,9]%>%str_extract('\\d+\\-\\d+')%>%
+		str_split_fixed('-',2)%>%set_colnames(c('start','end'))%>%
+		apply(2,as.numeric)%>%as.data.frame%>%{IRanges(start=.$start,end=.$end)})%>%
+		setNames(.,as.character(seqnames(.)))
+	anno$trgiddf <- tibble(transcript_id = faheaddf[,1], gene_id = faheaddf[,2])
+	anno = c(anno,
+		list(cdsstarts = anno$trspacecds%>%start%>%
+			setNames(names(anno$trspacecds)),
+		cds_prestop_st = anno$trspacecds%>%end%>%`-`(2)%>%
+			setNames(names(anno$trspacecds))	
+	))
+	anno
+}
+
+get_exprfile <- function(ribobam, ribofasta, outfile){
+	#	
+	anno <- get_ribofasta_anno(ribofasta)
+	#
+	cov <- get_readgr(ribobam, anno)
+	#
+	spmat <- get_read_spmat(cov)
+	#
+	tpm_opt <- optimize_tpms(spmat, anno, iternum=100)
+	#
+	tpms <- get_tpms(tpm_opt)
+	#
+	n_reads = nrow(spmat)
+	counts = n_reads * (tpms / 1e6)
+	counts = enframe(counts, 'Name', 'NumReads')
+	tpmdf = enframe(tpms, 'Name', 'TPM')
+	#
+	cdslens <- anno$trspacecds%>%width%>%setNames(names(anno$trspacecds))%>%
+		enframe('Name','Length')%>%mutate(EffectiveLength=Length)
+	output <- cdslens%>%left_join(tpmdf)%>%left_join(counts)
+	#
+	output <- output %>% select(Name, Length, EffectiveLength, TPM, NumReads)
+	output%>%write_tsv(outfile)
+}
+
 

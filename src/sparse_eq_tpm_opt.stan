@@ -11,17 +11,16 @@ data {
 }
 
 parameters {
-  simplex [TR] tpm; // the ratio of steady state ratio to ribo
+  simplex [TR] tpm;
 }
 
 transformed parameters {
   vector [TR] n;
-  n = tpm ./ trlen;
+  n = tpm .* trlen;
 }
 
 model {
     target += log(
       csr_matrix_times_vector(R, TR, w, v, u, n)
-      // (map * n)
     ).* classweights;
 }

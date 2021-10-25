@@ -1,5 +1,5 @@
-Package: RiboEM
-Title: Estimates RPF Footprint Densities
+Package: RiboStan
+Title: Estimates Isoform Specific RPF Footprint Densities
 Version: 0.0.0.9000
 Authors@R: 
     person(given = "First",
@@ -14,11 +14,18 @@ Encoding: UTF-8
 LazyData: true
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.1.1
+biocViews: RiboSeq, Sequencing, QualityControl, DataImport, GenomeAnnotation, Transcriptomics, Software, Coverage, RNASeq
 Imports:
-    data.table
-    GenomicAlignments
-    rtracklayer
-    rstan
-    Matrix
-    MatrixStats
-    magrittr
+    data.table,
+    GenomicAlignments,
+    rtracklayer,
+    rstan,
+    Matrix,
+    magrittr,
+    ggplot2,
+    Rsamtools,
+    GenomicFeatures,
+    BiocGenerics,
+    Biostrings,
+    testthat
+

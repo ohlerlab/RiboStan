@@ -1,0 +1,163 @@
+---
+title: "RiboQuant"
+output: 
+ html_notebook:
+  toc: yes
+---
+  
+# Vignette RiboEM
+  
+# Setup
+  
+```{r loadinglibraries, include=FALSE, echo=FALSE, eval=T}
+{
+knitr::opts_chunk$set(root.dir = here::here(),eval=TRUE,cache=FALSE,echo=FALSE,warning = FALSE,message = FALSE,include=TRUE,
+                      fig.width =7,fig.height=7,out.width=700,out.height=700,dev='png')
+
+library(MASS)
+library(rmarkdown)
+library(knitr)
+library(here)
+library(magrittr)
+library(stringr)
+library(ggplot2)
+library(tximport)
+library(dbscan)
+library(tidyverse)
+shift<-GenomicRanges::shift
+}
+```
+
+
+```{r}
+################################################################################
+########## 
+################################################################################
+
+
+{
+#
+gtf <- '../cortexomics/ext_data/gencode.vM12.annotation.gtf'
+ribobam <- '../cortexomics/pipeline/star_transcript/data/E13_ribo_1/E13_ribo_1.bam'
+
+gtf <- '../eif4f_pipeline/ext_data/gencode.v37.primary_assembly.annotation.gtf'
+ribobam <- '../eif4f_pipeline/pipeline/merged_pc_wt.sort.bam'
+
+
+
+source('R/get_tpms.R')
+source('R/get_offsets.R')
+#
+gtf <- '../eif4f_pipeline/ext_data/gencode.v37.primary_assembly.annotation.gtf'
+ribobam <- '../eif4f_pipeline/pipeline/combined_bams/negIAA.bam'
+
+
+#
+
+ribobams <- Sys.glob('../eif4f_pipeline/pipeline/star/pc/data/4E_-IAA_rep*/*.bam')
+ribobam <- ribobams[1]
+fafile = '../eif4f_pipeline/ext_data/GRCh38.primary_assembly.genome.fa'
+#
+anno <- rtracklayer::import(gtf)
+anno <- filter_anno(anno, fafile)
+
+}
+# data.table::fread%>%args
+# allseqs = data.table::fread(str_interp('samtools view ${ribobam}| cut -f 10'),header=F)
+# allseqs$id = id(allseqs$V1)
+
+# tr2gid<-anno%>%mcols%>%.[,c('gene_id','transcript_id')]%>%
+  #as.data.frame%>%distinct%>%filter(!is.na(transcript_id))%>%
+  # {setNames(.$gene_id,.$transcript_id)}
+#
+#
+ribofasta = "../eif4f_pipeline/pipeline/gencode.v37.primary_assembly.annotation.orfext.fa"
+ribobam <- '../eif4f_pipeline/pipeline/star/ORFext/data/4E_-IAA_rep1_01/4E_-IAA_rep1_01.bam'
+outfile = 'foo.tsv'
+get_exprfile(ribobam, ribofasta, outfile)
+
+
+{
+tm_st = Sys.time() 
+cov <- get_readgr(ribobam, anno)
+#
+spmat <- get_read_spmat(cov)
+#
+tpm_opt <- optimize_tpms(spmat, anno, iternum=100)
+#
+tpms <- get_tpms(tpm_opt)
+tm_stp = Sys.time()
+gtpms = gene_level_expr(tpms, anno)
+message(capture.output(tm_st - tm_stp))
+}
+
+source(('R/model_TE.R'))
+{
+ribocovtrs = tpms%>%keep(~.>10)%>%names
+#
+sampled_cov_gr <- sample_cov_gr(cov, tpms)%>%
+  keepSeqlevels(ribocovtrs, 'coarse')
+readlens <- sampled_cov_gr%>%get_readlens
+sampled_cov_gr <- sampled_cov_gr %>% subset(readlen %in% readlens)
+#save.image('dev.Rdata')
+#
+offsets_df <- get_offsets(sampled_cov_gr, anno, fafile)
+rust_codon_occ_df <- get_codon_occs(sampled_cov_gr, offsets_df, anno,
+  n_genes=1000, method='RUST_glm')
+tr_elong = get_predicted_codon_occs(anno, fafile, rust_codon_occ_df)
+gn_elong = gene_level_elong(tr_elong, tpms, anno)
+}
+
+sdr_df <- read_tsv('../eif4f_pipeline/tables/sdr_ms_ribo_table.tsv')
+
+#
+library(txtplot)
+sdr_df%>%left_join(gtpms%>%mutate_at('gene_id',str_replace,'\\.\\d+$',''))%>%
+  filter(is.finite(log2(expr)))%>%
+  {txtplot(.$ribo,log2(.$expr))}
+  {cor.test(.$ribo,.$expr)}
+
+sdr_df%>%left_join(gn_elong%>%mutate_at('gene_id',str_replace,'\\.\\d+$',''))%>%
+  filter(is.finite(log2(sum_occ)))%T>%
+  {txtplot(.$sdr,log2(.$sum_occ))}%>%
+  {cor.test(.$sdr,log2(.$sum_occ))}
+
+#does the ribo correlation with my 'tpms' here?
+sdr_df%>%left_join(enframe(tpms,'gene_id','tpm'))%>%{cor.test(.$ribo,.$tpm)}
+sdr_df%>%left_join(enframe(tpms,'gene_id','tpm'))%>%{cor.test(.$ribo,.$tpm)}
+
+
+rust_profiles <- sampled_cov_gr%>%create_rust_profiles
+#
+elong_rates <- rust_profiles%>%get_elong_rates()
+#
+tie_rates <- 
+
+
+
+
+
+# ## Define 'YIELD', 'MAP' and 'REDUCE' functions.
+# fl <- system.file(package="Rsamtools", "extdata", "ex1.bam")
+# bf <- BamFile(fl, yieldSize=500)
+
+# library(GenomicFiles)
+# bf <- Rsamtools::BamFile(ribobam, yieldSize=500)
+
+# flag = scanBamFlag(isUnmappedQuery=FALSE)
+# param = ScanBamParam(flag=flag, what=c("qname"))
+# allrnames = scanBam(ribobam, param=param)[[1]]
+
+# YIELD <- function(X, ...) {
+#   flag = scanBamFlag(isUnmappedQuery=FALSE)
+#   param = ScanBamParam(flag=flag, what=c("qname"), which=)
+#   scanBam(X, param=param, ...)[[1]])
+# }
+# MAP <- function(value, ...) {
+#   requireNamespace("Biostrings", quietly=TRUE)  ## for alphabetFrequency()
+#   Biostrings::alphabetFrequency(value, collapse=TRUE)
+# }
+# REDUCE <- `+`        # add successive alphabetFrequency matrices
+# reduceByYield(bf, YIELD, MAP, REDUCE, parallel=FALSE)
+
+```

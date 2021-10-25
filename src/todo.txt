@@ -19,3 +19,13 @@ readlength functioning
 
 
 #clean up the annotation object usage
+
+#make sure we get elong rates for all - ribocovtrs is a bit overloadsed
+
+rename 'standard method for codon occ to whtaever RUST paper uses'
+#get the AAA codon in there, since it's just hte intercept rn
+
+#elong lacking in some genes why?
+
+
+#make sure the prestop/start stuff accurate for the ribofastas
