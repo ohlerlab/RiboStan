@@ -1,4 +1,4 @@
-Package: RiboStan
+Package: Ribostan
 Title: Estimates Isoform Specific RPF Footprint Densities
 Version: 0.0.0.9000
 Authors@R: 
@@ -17,15 +17,16 @@ RoxygenNote: 7.1.1
 biocViews: RiboSeq, Sequencing, QualityControl, DataImport, GenomeAnnotation, Transcriptomics, Software, Coverage, RNASeq
 Imports:
     data.table,
-    GenomicAlignments,
     rtracklayer,
     rstan,
     Matrix,
     magrittr,
     ggplot2,
     Rsamtools,
-    GenomicFeatures,
     BiocGenerics,
     Biostrings,
-    testthat
-
+    testthat,
+    GenomicFeatures,
+    GenomicAlignments,
+    GenomicRanges,
+    GenomeInfoDb,

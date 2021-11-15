@@ -7,7 +7,7 @@
 ########## Range manipulation
 ################################################################################
 library(assertthat)
-kspl_mapFromTranscripts <- function(trspacegr,exons_grl){
+spl_mapFromTranscripts <- function(trspacegr,exons_grl){
   #
   exons_tr<-exons_grl%>%unlist%>%mapToTranscripts(exons_grl)%>%.[names(.)==seqnames(.)]
   ov <- findOverlaps(trspacegr,exons_tr)
@@ -36,7 +36,7 @@ resize_grl_startfix<-function(grl,width){
   grl@unlistData[newends] <- resize(grl@unlistData[newends], width(grl@unlistData[newends]) - endtrims  )
   grl
 }
-str_order_grl<-function(grl){order( start(grl)*(((strand(grl)!='-')+1)*2 -3) )}
+str_order_grl<-function(grl){BiocGenerics::order( start(grl)*(((strand(grl)!='-')+1)*2 -3) )}
 sort_grl_st <- function(grl)grl[str_order_grl(grl),]
 resize_grl_endfix <- function(grl,width){
   grl = invertStrand(grl)%>%sort_grl_st
@@ -44,16 +44,42 @@ resize_grl_endfix <- function(grl,width){
   grl = resize_grl_startfix(grl,width)
   invertStrand(grl)%>%sort_grl_st
 }
-resize_grl <- function(grl,width,fix='start',check=TRUE){
-  stopifnot(all(width>0))
+
+#' Perform a Ribo-seQC analysis
+#'
+#' This function loads annotation created by the prepare_annotation_files function, and analyzes a BAM file.
+#' @param grl
+#' @param width
+#' @return resized grl
+#' @details resize a grangeslist#' @import rmarkdown
+#' @import rtracklayer
+#' @import GenomicAlignments
+#' @import BSgenome
+#' @import GenomicFiles
+#' @import devtools
+#' @import reshape2
+#' @import ggplot2
+#' @import knitr
+#' @import DT
+#' @import gridExtra
+#' @import ggpubr
+#' @import viridis
+#' @import Biostrings
+#' @import GenomicFeatures
+#' @import BiocGenerics
+#' @import GenomicRanges
+#' @export 
+
+resize_grl <- function(grl,gwidth,fix='start',check=TRUE){
+  stopifnot(all(gwidth>0))
   assert_that(all(all(diff(str_order_grl(grl))==1) ),msg = "grl needs to be 5'->3' sorted")
   if(fix=='start'){
-    grl = resize_grl_startfix(grl,width)
+    grl = resize_grl_startfix(grl,gwidth)
   }else if(fix=='end'){
-    grl = resize_grl_endfix(grl,width)
+    grl = resize_grl_endfix(grl,gwidth)
   }else if(fix=='center'){
     grlwidths = sum(width(grl)) 
-    diffs = (width - grlwidths)
+    diffs = (gwidth - grlwidths)
     # 
     grl = resize_grl_startfix(grl,grlwidths + ceiling(diffs/2))
     grl = resize_grl_endfix(grl,grlwidths + diffs)
@@ -64,7 +90,8 @@ resize_grl <- function(grl,width,fix='start',check=TRUE){
       stop(str_interp("${sum(startstoolow)} ranges extended below 1 .. e.g. ${head(which(startstoolow,1))}"))
     }
     grlseqs <- as.vector(unlist(use.names=F,seqnames(grl)[IntegerList(as.list(rep(1,length(grl))))]))
-    endstoohigh <- any((end(grl)>seqlengths(grl)[grlseqs])%in%TRUE)
+    endhighvect <- (GenomicRanges::end(grl)>GenomeInfoDb::seqlengths(grl)[grlseqs])
+    endstoohigh <- any(endhighvect)
     if(any(endstoohigh)){
       stop(str_interp("${sum(endstoohigh)} ranges extended below above seqlength .. e.g. ${head(which(endstoohigh,1))}"))
     }
@@ -102,8 +129,8 @@ get_orfcoords <- function(anno, fafile){
 	library(Rsamtools)
 	library(Rsamtools)
 	#
-	cdsgrl <- anno%>%subset(type=='CDS')%>%split(.,.$transcript_id)
-	exonsgrl <- anno%>%subset(type=='exon')%>%split(.,.$transcript_id)
+	cdsgrl <- anno%>%subset(type=='CDS')%>%GenomicRanges::split(.,.$transcript_id)
+	exonsgrl <- anno%>%subset(type=='exon')%>%GenomicRanges::split(.,.$transcript_id)
 	#
 	ribocovtrs <- names(cdsgrl)
 	#
@@ -123,7 +150,7 @@ get_orfcoords <- function(anno, fafile){
 		# resize(width(.)+3)%>%
 		GenomicFeatures::extractTranscriptSeqs(x=fafile,.)%>%
 		Biostrings::translate(.)
-	cdsseqends = cdsseqends[nchar(cdsseqends)==2]
+	cdsseqends = cdsseqends[Biostrings::nchar(cdsseqends)==2]
 	#
 	end_stop = table(subseq(cdsseqends,1,1))%>%sort%>%{./sum(.)}%>%tail(1)%>%`>`(0.5)
 	end_plusone_stop = table(subseq(cdsseqends,2,2))%>%sort%>%{./sum(.)}%>%tail(1)%>%`>`(0.5)
@@ -139,22 +166,6 @@ get_orfcoords <- function(anno, fafile){
 	orf_coords <- data.frame(start=cdsstarts,prestop_st=cds_prestop_st)
 	orf_coords
 }
-
-
-# cdsgrl%>%head%>%sort%>%resize_grl(3)
-
-# getSeq(x=FaFile(fafile),trspacecds%>%head(100)%>%shift(3)%>%resize(3,'end')%>%
-# 	mapFromTranscripts(exonsgrl))%>%translate%>%table
-
-
-# gr_prestops = cds_prestop_st%>%enframe('seqnames','start')%>%mutate(end=start)%>%GRanges%>%
-# 	resize(3,'end')%>%
-# 	shift(3)
-
-# gr_prestops%>%head(40)%>%mapFromTranscripts(exonsgrl)%>%
-# 	getSeq(x=FaFile(fafile),.)%>%translate%>%table
-
-# #
 
 
 addphase <- function(gr,cdsstarts){
@@ -181,7 +192,7 @@ dnaseq2onehot <- function(mat,pre){
 }
 prop <- function(x,rnd=3) round(x/sum(x),rnd)
 enddist <- function(gr){
-	end(gr) - seqlengths(gr)[as.vector(seqnames(gr))]
+	end(gr) - GenomeInfoDb::seqlengths(gr)[as.vector(seqnames(gr))]
 }
 
 width1grs <- function(gr){
@@ -435,14 +446,6 @@ get_incl_max_offsets<-function(sampled_cov_gr, anno, fafile){
 	best_offsets
 }
 
-
-get_readlens <- function(cov){
-	cov$readlen%>%table%>%cumsum%>%{./max(.)}%>%
-	keep(~.>0.025)%>%
-	{keep(.,~1-.>0.025)}%>%
-	names%>%
-	as.numeric
-}
 
 get_offsets <- function(sampled_cov_gr, anno, fafile, method='cds_incl'){
 	# minreadlenfreq = sampled_cov_gr$readlen%>%table%>%{./sum(.)}%>%min

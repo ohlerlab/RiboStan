@@ -1,3 +1,92 @@
+
+
+
+#' Pick columns from a grangeslist
+#'
+#' Given a grangelist of say N genes with X_n exons, this yields a 
+#' length N vector pulled from the mcols of the first element of each list element
+#'
+#' @keywords Ribostan
+#' @author Dermot Harnett, \email{dermot.p.harnett@gmail.com}
+#'
+#' @param grl String; full path to html report file.
+#' @return length n vector pulled from mcols of first list elements 
+
+
+fmcols <- function(grl,...){
+  with(as.data.frame(grl@unlistData@elementMetadata),...)[start(grl@partitioning)]
+}
+
+#' Check if GRanges elements are out of bounds
+#'
+#' Given a grangelist of say N genes with X_n exons, this yields a 
+#' length N vector pulled from the mcols of the first element of each list element
+#'
+#' @keywords Ribostan
+#' @author Dermot Harnett, \email{dermot.p.harnett@gmail.com}
+#'
+#' @param grl String; full path to html report file.
+#' @return a logical vector valued TRUE if GRanges
+#' elements are out of the chromosome bounds
+
+is_out_of_bounds <- function(gr,si = seqinfo(gr)){
+	if(is(gr,'GenomicRangesList')){
+    grchrs = as.character(BiocGenerics::unlist(seqnames(gr)))
+    is_out <-  end(gr) > GenomicRanges::split(seqlengths(si)[grchrs],gr@partitioning)
+  }else{
+    seqinfo(gr)<-si
+    is_out <-  end(gr) > seqlengths(gr)[as.character(seqnames(gr))]
+  }
+  start(gr)<1 | is_out
+}
+
+#' Map From a transcript to the genome, with exons splitting elements if necessary
+#'
+#' @keywords Ribostan
+#' @author Dermot Harnett, \email{dermot.p.harnett@gmail.com}
+#'
+#' @param trspacegr GRanges; an object in transcript space, to be mapped back to the genome
+#' @param exonsgrl exonsgrl; exons making up the space element is to be mapped from. 
+#' @return a granges object containing 1 or more element for each 
+#' transcript space range, in genome space, corresponding to pieces
+#' of each element split by exon boundaries
+
+
+spl_mapFromTranscripts <- function(trspacegr,exons_grl){
+  exons_tr<-exons_grl%>%
+  	unlist%>%
+  	GenomicFeatures::mapToTranscripts(exons_grl)%>%
+  	.[names(.)==seqnames(.)]
+  ov <- findOverlaps(trspacegr,exons_tr)
+  #make sure all our elements have exons
+  stopifnot(all(seqnames(trspacegr)%in%seqnames(exons_grl)))
+  stopifnot((1:length(trspacegr))%in%queryHits(ov))
+  #multiply our ranges
+  trspacegr_spl <- suppressWarnings({trspacegr[queryHits(ov)]})
+  #limit them to overlap one exon
+  trspacegr_spl <- suppressWarnings({pintersect(trspacegr_spl,exons_tr[subjectHits(ov)])})
+  #now map to the genome
+  genomic_trspacegr <- GenomicFeatures::mapFromTranscripts(
+		trspacegr_spl,
+  	exons_grl
+  )
+  #note the mapping
+  genomic_trspacegr$xHits <- queryHits(ov)[genomic_trspacegr$xHits]
+  genomic_trspacegr
+}
+
+
+#' Check if a granges list of CDS have start codons
+#'
+#' @keywords Ribostan
+#' @author Dermot Harnett, \email{dermot.p.harnett@gmail.com}
+#'
+#' @param trspacegr GRanges; an object in transcript space, to be mapped back to the genome
+#' @param exonsgrl exonsgrl; exons making up the space element is to be mapped from. 
+#' @return a granges object containing 1 or more element for each 
+#' transcript space range, in genome space, corresponding to pieces
+#' of each element split by exon boundaries
+
 #now only those which have M at the start and '*' at the end
 hasMstart <- function(cdsgrl, fafileob){
 	cdsseqstarts = cdsgrl%>%
@@ -5,27 +94,35 @@ hasMstart <- function(cdsgrl, fafileob){
 		resize_grl(3,'start')%>% 
 		GenomicFeatures::extractTranscriptSeqs(x=fafileob,.)%>%
 		Biostrings::translate(.)
-	cdsseqstarts[ribocovtrs]=='M'
+	cdsseqstarts=='M'
 }
 
-get_trspace_cds <-function(cdsgrl,filt_anno){
-	exonsgrl <- filt_anno%>%
-		subset(type=='exon')%>%
-		split(.,.$transcript_id)%>%
-		.[names(cdsgrl)]
+#' Check if a granges list of CDS have start codons
+#'
+#' @keywords Ribostan
+#' @author Dermot Harnett, \email{dermot.p.harnett@gmail.com}
+#'
+#' @param trspacegr GRanges; an object in transcript space, to be mapped back to the genome
+#' @param exonsgrl exonsgrl; exons making up the space element is to be mapped from. 
+#' @return a granges object containing the coding sequence range for each transcript
+get_trspace_cds <-function(cdsgrl, exonsgrl){
 	#now lift cds to exons space
 	trspacecds <- GenomicFeatures::pmapToTranscripts(
 		cdsgrl,
 		exonsgrl[names(cdsgrl)])
-	trspacecds <- trspacecds%>%unlist
-	names(trspacecds)==names(cdsgrl)
+	#ensure all cds map cleanly to the exons
+	stopifnot(trspacecds%>%elementNROWS%>%`==`(1))
+	stopifnot(names(trspacecds)==names(cdsgrl))
 	trspacecds
 }
 
 #get the grl 
-get_cdsgrl <- function(filt_anno, ignore_orf_validity){
+get_cdsgrl <- function(filt_anno, fafileob, ignore_orf_validity){
 	#find which cds are multiples of 3bp
-	cdsgrl <- filt_anno%>%subset(type=='CDS')%>%split(.,.$transcript_id)
+
+	cdsgrl <- filt_anno%>%
+		BiocGenerics::subset(.,type=='CDS')%>%
+		GenomicRanges::split(.,.$transcript_id)
 	is3bp = cdsgrl%>%width%>%sum%>%`%%`(3)%>%`==`(0)	
 	cdsgrl <- cdsgrl[is3bp]
 	message(str_interp('filtered out ${sum(!is3bp)} ORFs for not being multiples of 3bp long'))
@@ -39,26 +136,26 @@ get_cdsgrl <- function(filt_anno, ignore_orf_validity){
 	#some sequences have spaces (ends of chrs i think)	
 	filterchars = cdsseqends%>%str_detect('[^ATCG]')
 	cdsseqends[filterchars] = 'AAAAAA'
-	cdsseqends %<>% translate
-	stopifnot(cdsseqends%>%nchar%>%is_in(2))
+	cdsseqends = Biostrings::translate(cdsseqends)
+	stopifnot(cdsseqends%>%{Biostrings::nchar(.)}%>%is_in(2))
 	#now determine if the annotations 'cds' include stop codons
 	#if they do, fix that.
-	end_stop = table(subseq(cdsseqends,1,1))%>%sort%>%
+	end_stop = BiocGenerics::table(Biostrings::subseq(cdsseqends,1,1))%>%sort%>%
 	{./sum(.)}%>%.['*']%>%`>`(0.5)
 	if(is.na(end_stop)) end_stop = FALSE
-	end_plusone_stop = table(subseq(cdsseqends,2,2))%>%sort%>%
+	end_plusone_stop = BiocGenerics::table(Biostrings::subseq(cdsseqends,2,2))%>%sort%>%
 		{./sum(.)}%>%.['*']%>%`>`(0.5)
 	stopifnot(end_stop|end_plusone_stop)
 	if(end_stop) cdsgrl <- cdsgrl%>%resize_grl(sum(width(.))-3,'start')
 	#
-	endseq = if(end_plusone_stop){ subseq(cdsseqends,2,2) }else{
-	 subseq(cdsseqends,1,1)}
-	hasstop = endseq[ribocovtrs]=='*'
+	endseq = if(end_plusone_stop){ Biostrings::subseq(cdsseqends,2,2) }else{
+	 Biostrings::subseq(cdsseqends,1,1)}
+	hasstop = endseq=='*'
 	if(!ignore_orf_validity){
 		cdsgrl <- cdsgrl[hasstop]
 		message(str_interp('filtered out ${sum(!hasstop)} ORFs for not ending with *'))
 	}
-	hasM <- hasMstart(cdsgrl)
+	hasM <- hasMstart(cdsgrl, fafileob)
 	if(!ignore_orf_validity){
 		cdsgrl <- cdsgrl[hasM]
 		message(str_interp('filtered out ${sum(!hasstop)} ORFs for not starting with M'))
@@ -71,8 +168,10 @@ get_cdsgrl <- function(filt_anno, ignore_orf_validity){
 ########## 
 ################################################################################
 filter_anno <- function(anno, fafile, ignore_orf_validity=F){
-	filt_anno <- anno
 	fafileob = Rsamtools::FaFile(fafile)
+	Rsamtools::indexFa(fafile)
+	GenomeInfoDb::seqinfo(anno) <- GenomeInfoDb::seqinfo(fafileob)[as.vector(seqlevels(anno))]
+	filt_anno <- anno
 	require(Biostrings)
 
 	#get the cds not including stop codons, possibly filtering for valid orfs
@@ -86,19 +185,24 @@ filter_anno <- function(anno, fafile, ignore_orf_validity=F){
 	#
 	ribocovtrs = names(cdsgrl)
 	#
+	exonsgrl <- filt_anno%>%
+		subset(type=='exon')%>%
+		GenomicRanges::split(.,.$transcript_id)%>%
+		.[names(cdsgrl)]
+	#
 	trspacecds <- get_trspace_cds(cdsgrl, exonsgrl)
 	#
 	cdsstarts = trspacecds%>%start%>%setNames(names(trspacecds))
 	#
-	exonsgrl <- filt_anno%>%
-		subset(type=='exon')%>%
-		split(.,.$transcript_id)%>%
-		.[names(cdsgrl)]
+	trgiddf <- anno%>%mcols%>%.[,c('gene_id','transcript_id')]%>%
+  	as.data.frame%>%distinct%>%filter(!is.na(transcript_id))
 	outanno = list(
 		ribocovtrs=ribocovtrs,
 		trspacecds=trspacecds,
 		cdsgrl=cdsgrl,
-		exonsgrl= exonsgrl)
+		exonsgrl= exonsgrl,
+		trgiddf=trgiddf
+	)
 	outanno = c(outanno,
 		list(cdsstarts = outanno$trspacecds%>%start%>%
 			setNames(names(outanno$trspacecds)),
@@ -109,7 +213,7 @@ filter_anno <- function(anno, fafile, ignore_orf_validity=F){
 	return(outanno)
 }
 
-make_ext_fasta <- function(gtf, fasta, outfasta){
+make_ext_fasta <- function(gtf, fasta, outfasta, fpext=50,tpext=50){
 	stopifnot({cat('testing',file=outfasta);file.remove(outfasta)})
 
 	stopifnot(gtf%>%str_detect('\\.(gtf)$'))
@@ -119,17 +223,17 @@ make_ext_fasta <- function(gtf, fasta, outfasta){
 	outprefix = outfasta%>%str_replace('\\.(fasta|fa)$','')
 
 	#get our filtered annotation
-	anno <- filter_anno(rtracklayer::import(gtf), fasta)
-	exonsgrl = anno$exonsgrl
-	cdsexonsgrl = anno$cdsgrl
+	anno <- rtracklayer::import(gtf)
+	anno <- filter_anno(anno, fasta)
 
+	cdsgrl <- anno$cdsgrl
+	exonsgrl = anno$exonsgrl
+	cdsexonsgrl = anno$exonsgrl
+	cdsstartpos = start(anno$trspacecds@unlistData)
 	#get exons for our cds
 	cdsexonsgrl%<>%sort_grl_st
 	#get an object representing the CDS In transript space
-	cdstrspace = pmapToTranscripts(filtcdsgrl,cdsexonsgrl[fmcols(filtcdsgrl,transcript_id)])
-	#ensure all cds map cleanly to the exons
-	stopifnot(cdstrspace%>%elementNROWS%>%`==`(1))
-	cdsstartpos = setNames(start(cdstrspace@unlistData),names(cdstrspace))
+	cdstrspace = anno$trspacecds
 	endpos = sum(width(cdsexonsgrl))-end(cdstrspace@unlistData)
 	#expand our first exon when needed
 	startposexpansion = pmax(0,fpext - cdsstartpos + 1)
@@ -141,7 +245,7 @@ make_ext_fasta <- function(gtf, fasta, outfasta){
 
 	{
 	#now map our cds to that
-	cds_exptrspc = pmapToTranscripts(filtcdsgrl,cdsexonsgrl)
+	cds_exptrspc = GenomicFeatures::pmapToTranscripts(cdsgrl, cdsexonsgrl)
 	stopifnot(cds_exptrspc%>%elementNROWS%>%`==`(1))
 
 	expcds_exptrspc=cds_exptrspc
@@ -153,9 +257,10 @@ make_ext_fasta <- function(gtf, fasta, outfasta){
 	expcds_exptrspc%<>%resize(width(.)+tpext,'start',ignore.strand=TRUE)
 	#now back to genome space
 	expcdsgenspace = spl_mapFromTranscripts(expcds_exptrspc,cdsexonsgrl)
-	expcdsgenspace = split(expcdsgenspace,names(expcdsgenspace))
+	expcdsgenspace = GenomicRanges::split(expcdsgenspace,names(expcdsgenspace))
 	#get the sequences
-	isoutofbds = any(is_out_of_bounds(expcdsgenspace,seqinfo(fafile)))
+	fafileob = Rsamtools::FaFile(fasta)
+	isoutofbds = any(is_out_of_bounds(expcdsgenspace,seqinfo(fafileob)))
 	message(str_interp('Excluded ${sum(isoutofbds)} genes because they extended beyond chromosomal boundaries'))
 	expcdsgenspace <- expcdsgenspace[!isoutofbds]
 	cdsexonsgrl <- cdsexonsgrl[names(expcdsgenspace)]
@@ -163,7 +268,7 @@ make_ext_fasta <- function(gtf, fasta, outfasta){
 	expcdsgenspaceseq <- 
 		expcdsgenspace%>%
 		sort_grl_st%>%
-		extractTranscriptSeqs(x=fafile)
+		GenomicFeatures::extractTranscriptSeqs(.,x=fafileob)
 
 	}
 	cdslens = sum(width(cdsgrl))[names(expcdsgenspace)]
@@ -194,15 +299,16 @@ make_ext_fasta <- function(gtf, fasta, outfasta){
 			GRanges(as.character(seqnames(cds_exptrspc)),IRanges(1,sum(width(cdsexonsgrl))))%>%{.$type='exon';.},
 			cds_exptrspc%>%unlist%>%{.$type='CDS';.}
 		)
-		new_trspc_anno%>%export(paste0(outprefix,'_trspaceanno.gtf'))
+		new_trspc_anno%>%
+			suppressWarnings({rtracklayer::export(paste0(outprefix,'_trspaceanno.gtf'))})
 
 		#write the expanded cds exon sequences to disk
 		writeXStringSet(expcdsgenspaceseq,outfasta)
-		message(normalizePath(outfasta),mustWork=TRUE)
+		message(normalizePath(outfasta,mustWork=TRUE))
 
 		#now make fasta file with shorter transcript names
-		shortnamefile = paste0(outprefix,'.shortheader.fa')
-		system(str_interp("sed -e 's/|.*$//' ${outfasta} > ${shortnamefile}"))
+		shortheaderfasta = paste0(outprefix,'.shortheader.fa')
+		system(str_interp("sed -e 's/|.*$//' ${outfasta} > ${shortheaderfasta}"))
 		message(normalizePath(shortheaderfasta,mustWork=TRUE))
 
 	}

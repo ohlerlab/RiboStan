@@ -1,3 +1,30 @@
+# RiboseQC, a comprehensive Ribo-seq quality control tool
+#
+# Authors:
+# Lorenzo Calviello (calviello.l.bio@gmail.com)
+# Dominique Sydow (dominique.sydow@posteo.de)
+# Dermott Harnett (Dermot.Harnett@mdc-berlin.de)
+# Uwe Ohler (Uwe.Ohler@mdc-berlin.de)
+#
+# This software is free software: you can redistribute it and/or
+# modify it under the terms of the GNU General Public License as
+# published by the Free Software Foundation, either version 3 of the
+# License, or (at your option) any later version.
+#
+# This software is distributed in the hope that it will be useful, but
+# WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+# General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this software. If not, see
+# <http://www.gnu.org/licenses/>.
+
+#' @import GenomicFeatures
+#' @import GenomicFiles
+NULL
+
+
 library(tidyverse)
 library(magrittr)
 library(GenomicRanges)
@@ -6,8 +33,47 @@ library(Matrix)
 id <- function(cov) BiocGenerics::match(cov,unique(cov))
 
 
+#' Select those read lengths which make up 95% of the reads
+#'
+#' This function takes in a vector of the lengths of each read, and determines which read lengths
+#' should be included in order to filter out the 2.5% shortest/longest reads.
+#'
+#' @keywords Ribostan
+#' @author Dermot Harnett, \email{dermot.p.harnett@gmail.com}
+#'
+#' @param readlens Numeric; numeric vector
+#' @return a numeric integer vector, such that selecting reads with these lengths will preserve at least 95%
+#' of reads
 
-process_ribogr <- function(ribobam, strip_seqnames=TRUE){
+get_readlens <- function(readlens){
+	readlens%>%as.numeric%>%
+	table%>%cumsum%>%{./max(.)}%>%
+	keep(~.>0.025)%>%
+	{keep(.,~1-.>0.025)}%>%
+	names%>%
+	as.numeric
+}
+
+
+#' Read a bam file containing Ribosomal Footprints
+#'
+#' This function 
+#'
+#' @keywords Ribostan
+#' @author Dermot Harnett, \email{dermot.p.harnett@gmail.com}
+#'
+#' @param ribobam String; full path to html report file.
+#' @param strip_seqnames  whether the function should remove all text after the first '|', useful if aligning to gencode fastas#
+#' Defaults to \code{TRUE}
+#' @return This function returns a granges object with the read names in the names slot and a metadata column
+#' denoting readlength.
+#'
+#' @details This function reads in a bam file containing ribosomal footprints. It uses only reads without splice sites
+#' and reads which align to the positive strand, as it's designed to work on transcriptomic alignments.
+#' 
+#' @seealso \code{\link{get_cds_reads}}, \code{\link{get_readlens}}
+
+read_ribobam <- function(ribobam, strip_seqnames=TRUE){
 	#
 	require(Rsamtools)
 	require(GenomicAlignments)
@@ -15,7 +81,8 @@ process_ribogr <- function(ribobam, strip_seqnames=TRUE){
 		isMinusStrand = FALSE, ))
 	ribogr <- GenomicAlignments::readGAlignments(ribobam,use.names=T,param=bparam)
 	#
-	wfilt = qwidth(ribogr)<=35 & (20<=qwidth(ribogr))
+	readlens <- get_readlens(qwidth(ribobam))
+	wfilt = qwidth(ribogr)<=max(readlens) & (min(readlens)<=qwidth(ribogr))
 	ribogr = ribogr[wfilt]
 	# this is the number get_bamdf gets in py 4628644
 	names(ribogr) %<>% id
@@ -27,10 +94,10 @@ process_ribogr <- function(ribobam, strip_seqnames=TRUE){
 	}
 	#load genomic or transcriptomic bam
 	if(seqnames(ribogr)%>%head(1)%>%str_detect('chr')){
-		cov = ribogr%>%resize(1)%>%mapToTranscripts(exonsgrl[highcountcovtrs])
+		cov = ribogr%>%resize(1)%>%mapToTranscripts(exonsgrl)
 		cov$readlen = mcols(ribogr)$readlen[cov$xHits]
 		cov$name = names(ribogr)[cov$xHits]
-		cov%<>%subset(between(readlen,25,35))
+		cov%<>%subset(between(readlen, min(readlens), max(readlens)))
 		cov%<>%resize(1,'start')
 		cov <- sort(cov)
 	} else{
@@ -42,19 +109,77 @@ process_ribogr <- function(ribobam, strip_seqnames=TRUE){
 	cov	
 }
 
+#' Filter an RPF GR for overlap with coding sequences
+#'
+#' @keywords Ribostan
+#' @author Dermot Harnett, \email{dermot.p.harnett@gmail.com}
+#'
+#' @param cov GRanges; A granges object with 
+#' @param strip_seqnames  whether the function should remove all text after the first '|', useful if aligning to gencode fastas#
+#' Defaults to \code{TRUE}
+#' @return This function returns a granges object with the read names in the names slot and a metadata column
+#' denoting readlength.
+#'
+#' @details This function reads in a bam file containing ribosomal footprints. It uses only reads without splice sites
+#' and reads which align to the positive strand, as it's designed to work on transcriptomic alignments.
+#' 
+#' @seealso \code{\link{get_cds_reads}}, \code{\link{get_readlens}}
+
 get_cds_reads<-function(cov, anno){
 	trspacecds <- anno$trspacecds
-	sharedseqnames <- unique(seqnames(trspacecds))%>%intersect(seqnames(cov))
+	sharedseqnames <- unique(seqnames(trspacecds))%>%
+		intersect(seqnames(cov))%>%
+		unlist
 	cov <-  cov%>%keepSeqlevels(sharedseqnames,pruning='coarse')
 	seqlevels(cov) <- seqlevels(trspacecds)
 	seqinfo(cov) <- seqinfo(trspacecds)
 	cov <- cov %>% subsetByOverlaps(trspacecds)
 }
+
+
+#' Read and filter a bam file of RPFs
+#'
+#' @keywords Ribostan
+#' @author Dermot Harnett, \email{dermot.p.harnett@gmail.com}
+#'
+#' @param ribobam GRanges; A bam file with RPFs
+#' @param ribobam GRanges; A coverage
+#' @param strip_seqnames  whether the function should remove all text after the first '|', useful if aligning to gencode fastas#
+#' Defaults to \code{TRUE}
+#' @return This function returns a granges object with the read names in the names slot and a metadata column
+#' denoting readlength.
+#'
+#' @details This function reads in a bam file containing ribosomal footprints. It uses only reads without splice sites
+#' and reads which align to the positive strand, as it's designed to work on transcriptomic alignments.
+#' 
+#' @seealso \code{\link{get_cds_reads}}, \code{\link{get_readlens}}
+#' @details This function creates the html report visualizing the RiboseQC analysis data. \cr \cr
+#' Input are two lists of the same length: \cr \cr
+#' a) \code{input_files}: list of full paths to one or multiple input files
+#' (RiboseQC analysis files generated with \code{RiboseQC_analysis}) and \cr \cr
+#' b) \code{input_sample_names}: list of corresponding names describing the file content in max. 5 characters
+#' (these are used as names in the report). \cr \cr
+#' For the report, a RMarkdown file is rendered as html document, saved as \code{output_file}. \cr \cr
+#' Additionally, all figures in the report are saved as PDF figures
+#' in an extra folder in the same directory as the report html file. \cr \cr
+#' Example: \cr
+#' \code{output_file <- "\\mydir\\myreport.html"} will generate
+#' the html report \code{\\mydir\\myreport.html} and
+#' the folder \code{\\mydir\\myreport_plots\\} for the RDS object files to be stored in.
+#'
+#' @seealso code{\\mydir\\myreport_plots\\}
+#' 
+#' @examples
+#' \dontrun{
+#' 
+#' }
+#' @export
+
 get_readgr<-function(ribobam, anno, strip_seqnames=TRUE){
 	bamseqnames <- seqinfo(Rsamtools::BamFile(ribobam))@seqnames
 	if(strip_seqnames) bamseqnames%<>%str_replace('\\|.*','')
-	stopifnot(mean(unique(seqnames(anno$trspacecds)) %in% bamseqnames)>.9)
-	cov <- process_ribogr(ribobam)
+	stopifnot(mean(unlist(unique(seqnames(anno$trspacecds))) %in% bamseqnames)>.9)
+	cov <- read_ribobam(ribobam)
 	cov <- get_cds_reads(cov, anno)
 	#4542346 is the number cds filtering gets us down to in py
 	names(cov)%<>%id
@@ -120,12 +245,13 @@ optimize_tpms<-function(spmat, anno, iternum=500){
 	require(rstan)
 	#
 	trlens <- anno$trspacecds%>%width%>%
+		unlist%>%
 		setNames(names(anno$trspacecds))
 	#now let's try the whole shebang in rstan
 	sptrlens <- trlens[colnames(spmat)]
-	fdata<-list(trlen=sptrlens)
+	fdata<-list(nonorm_trlen=sptrlens)
 	fdata<-c(fdata,spmat%>%rstan::extract_sparse_parts(.))
-	fdata$trlen %<>% {./sum(.)}
+	fdata$trlen <- fdata$nonorm_trlen%>%{./sum(.)}
 	fdata$TR <- spmat%>%ncol
 	fdata$R <- spmat%>%nrow
 	fdata$V <- fdata$w%>%length
@@ -161,7 +287,7 @@ optimize_tpms<-function(spmat, anno, iternum=500){
 		verbose=FALSE,
 		iter=iternum)
 	opt$seqnames <- colnames(spmat)
-	opt$trlen <- fdata$trlen
+	opt$trlen <- fdata$nonorm_trlen[opt$seqnames]
 	opt
 }
 

@@ -3,7 +3,7 @@ get_codposdf <- function(ribocovtrs, anno, fafile){
 	fafileob <- Rsamtools::FaFile(fafile)
 	#
 	cdsgrl <- anno%>%subset(type=='CDS')%>%
-		split(.,.$transcript_id)
+		GenomicRanges::split(.,.$transcript_id)
 	#
 	bestcdsseq = cdsgrl[ribocovtrs]%>%
 		sort_grl_st%>%
@@ -50,7 +50,7 @@ get_sitedf<-function(psitecov, anno, fafile,stop_codons=c('TAA','TAG','TGA')){
 	)
 	#
 	sitedf$p_codon<-codposdf$x
-	sitedf$a_codon <- codposdf%>%split(.,.$transcript_id)%>%map(~lead(.$x))%>%
+	sitedf$a_codon <- codposdf%>%GenomicRanges::split(.,.$transcript_id)%>%map(~lead(.$x))%>%
 		unlist
 	# psitecodons = codposdf%>%.[names(psitecov)]%>%bind_rows
 	# #
@@ -204,11 +204,28 @@ get_codon_occs <- function(sampled_cov_gr, offsets_df,
 # 	filter(!codon%in%c('TAG','TAA','TGA'))%>%
 # 	{txtplot(.$estimate.x,.$estimate.y)}
 #this probably needs to take an actual model object.
+
+
+#' Get the mean dwell time over all translated codons for a set of transcripts
+#'
+#' @keywords Ribostan
+#' @author Dermot Harnett, \email{dermot.p.harnett@gmail.com}
+#'
+#' @param anno - an annotation object
+#' @param fafile - a fasta file with sequence for that anno object
+#' @param codon_model - a dwell-time object describing 
+#' @return a data frame with columns sum_occ and gene_id
+#'
+#' @details This function aggregates transript level tpms to gene level,with the mean elongation rate over all the 
+#' genes transcripts weighted by transcript abundance
+#' @seealso \code{\link{get_cds_reads}}, \code{\link{get_readlens}}
+
+
 get_predicted_codon_occs <- function(anno, fafile, codon_model, ribocovtrs=NULL){
 	if(is.null(ribocovtrs))ribocovtrs <- anno$transcript_id%>%unique
 	#
 	cdsgrl <- anno$anno%>%subset(type=='CDS')%>%
-		split(.,.$transcript_id)
+		GenomicRanges::split(.,.$transcript_id)
 	#
 	fafileob <- Rsamtools::FaFile(fafile)
 	#
@@ -245,6 +262,20 @@ get_predicted_codon_occs <- function(anno, fafile, codon_model, ribocovtrs=NULL)
 	tr_elong
 }
 
+#' Aggregate transcript elongation scores to gene level
+#'
+#' @keywords Ribostan
+#' @author Dermot Harnett, \email{dermot.p.harnett@gmail.com}
+#'
+#' @param tr_elong elongation rates per transcript, data frame with columns transcript_id, sum_occ
+#' @param tpms a named vector of tpms per transcript
+#' @param anno an annotation object
+#' @return a data frame with columns sum_occ and gene_id
+#'
+#' @details This function aggregates transript level tpms to gene level,with the mean elongation rate over all the 
+#' genes transcripts weighted by transcript abundance
+#' @seealso \code{\link{get_cds_reads}}, \code{\link{get_readlens}}
+
 
 gene_level_elong<-function(tr_elong, tpms, anno){
 	trgiddf = anno$anno%>%mcols%>%
@@ -260,14 +291,5 @@ gene_level_elong<-function(tr_elong, tpms, anno){
 			mutate(tpm = replace_na(tpm,min(tpm,na.rm=T)*0.01))%>%
 			group_by(gene_id)%>%
 			summarise(sum_occ = weighted.mean(sum_occ, tpm, na.rm=T))
-	gn_elong%>%select(gene_id,sum_occ)
+	gn_elong%>%ungroup%>%select(gene_id,sum_occ)
 }
-
-#
-# probgids = gn_elong%>%filter(is.na(sum_occ))%>%pluck('gene_id')
-# okay so some of them have 0 expression gene wise
-# gtpms%>%filter(gene_id%in%probgids)
-# gns_w_expr = gtpms%>%filter(expr!=0)%>%pluck('gene_id')
-#
-# probgids_w_expr = gn_elong%>%filter(is.na(sum_occ),gene_id%in%gns_w_expr)%>%pluck('gene_id')
-

@@ -10,6 +10,7 @@ output:
 # Setup
   
 ```{r loadinglibraries, include=FALSE, echo=FALSE, eval=T}
+
 {
 knitr::opts_chunk$set(root.dir = here::here(),eval=TRUE,cache=FALSE,echo=FALSE,warning = FALSE,message = FALSE,include=TRUE,
                       fig.width =7,fig.height=7,out.width=700,out.height=700,dev='png')
@@ -24,8 +25,11 @@ library(ggplot2)
 library(tximport)
 library(dbscan)
 library(tidyverse)
+library(ORFik)
 shift<-GenomicRanges::shift
+
 }
+
 ```
 
 
@@ -42,39 +46,43 @@ ribobam <- '../cortexomics/pipeline/star_transcript/data/E13_ribo_1/E13_ribo_1.b
 
 gtf <- '../eif4f_pipeline/ext_data/gencode.v37.primary_assembly.annotation.gtf'
 ribobam <- '../eif4f_pipeline/pipeline/merged_pc_wt.sort.bam'
-
-
-
+source('R/anno.R')
 source('R/get_tpms.R')
 source('R/get_offsets.R')
+source('R/find_ORFs.R')
 #
-gtf <- '../eif4f_pipeline/ext_data/gencode.v37.primary_assembly.annotation.gtf'
+gtf <- '/fast/AG_Ohler/dharnet/eif4f_pipeline/ext_data/gencode.v37.primary_assembly.annotation.gtf'
 ribobam <- '../eif4f_pipeline/pipeline/combined_bams/negIAA.bam'
-
-
 #
-
-ribobams <- Sys.glob('../eif4f_pipeline/pipeline/star/pc/data/4E_-IAA_rep*/*.bam')
+ribobams <- Sys.glob('/fast/AG_Ohler/dharnet/eif4f_pipeline/pipeline/star/pc/data/4E_-IAA_rep*/*.bam')
 ribobam <- ribobams[1]
-fafile = '../eif4f_pipeline/ext_data/GRCh38.primary_assembly.genome.fa'
+fafile = '/fast/AG_Ohler/dharnet/eif4f_pipeline/GRCh38.primary_assembly.genome.fa'
+# make_ext_fasta(gtf=gtf,fa=fafile,out="foo.fa")
 #
 anno <- rtracklayer::import(gtf)
 anno <- filter_anno(anno, fafile)
 
+txdb <- GenomicFeatures::makeTxDbFromGFF(gtf)
+
+library(GenomicFeatures)
+
+fiveutrs = fiveUTRsByTranscript(txdb, use.names=T)
+alluORFs <- findUORFs(fiveutrs, fafile)
+
+
 }
+
 # data.table::fread%>%args
 # allseqs = data.table::fread(str_interp('samtools view ${ribobam}| cut -f 10'),header=F)
 # allseqs$id = id(allseqs$V1)
-
-# tr2gid<-anno%>%mcols%>%.[,c('gene_id','transcript_id')]%>%
-  #as.data.frame%>%distinct%>%filter(!is.na(transcript_id))%>%
-  # {setNames(.$gene_id,.$transcript_id)}
+#
+# 
 #
 #
-ribofasta = "../eif4f_pipeline/pipeline/gencode.v37.primary_assembly.annotation.orfext.fa"
-ribobam <- '../eif4f_pipeline/pipeline/star/ORFext/data/4E_-IAA_rep1_01/4E_-IAA_rep1_01.bam'
-outfile = 'foo.tsv'
-get_exprfile(ribobam, ribofasta, outfile)
+# ribofasta = "/fast/AG_Ohler/dharnet/eif4f_pipeline/pipeline/gencode.v37.primary_assembly.annotation.orfext.fa"
+# ribobam <- '/fast/AG_Ohler/dharnet/eif4f_pipeline/pipeline/star/ORFext/data/4E_-IAA_rep1_01/4E_-IAA_rep1_01.bam'
+# outfile = 'foo.tsv'
+# get_exprfile(ribobam, ribofasta, outfile)
 
 
 {
@@ -135,6 +143,42 @@ tie_rates <-
 
 
 
+selreadlens=27:33
+
+cds_codons <- get_cds_codons(anno, fafileob)
+fprustprofilelist <- get_sample_profs(covgrs, cds_codons, n_wind_l_ext=45)
+kl_df<-get_kl_df(frustprofilelist)
+kl_offsets <- select_offsets(kl_df)
+kl_offsets%>%select(p_offset,length=nreadlen)%>%write_tsv('ext_data/offsets_rustvar.tsv')
+kl_div_plot <- plot_kl_dv(kl_df, kl_offsets, selreadlens)
+
+pdf<-grDevices::pdf
+dir.create('plots')
+plotfile='plots/rust_fppos_vs_codon_variance.pdf'
+pdf(plotfile,w=12,h=1+3*length(selreadlens))
+kl_div_plot%>%print
+dev.off()
+message(normalizePath(plotfile))
+
+#posseldf
+posseldf = bind_rows(
+  kl_offsets2plot %>% filter(nreadlen%in%28:31)%>%mutate(position=position+3,site='p_site')%>%select(nreadlen,position,site),
+  kl_offsets2plot %>% filter(nreadlen%in%28:31)%>%mutate(position=position,site='a_site')%>%select(nreadlen,position,site),
+  kl_offsets2plot %>% filter(nreadlen%in%28:31)%>%mutate(position=position-3,site='a_p3_site')%>%select(nreadlen,position,site)
+)
+
+allcodondt = frustprofilelist%>%
+  filter(set=='all')%>%
+  group_by(set,sample,nreadlen,position)%>%
+  filter(nreadlen %in% 28:31)%>%
+  mutate(ro_cl = ro_cl/sum(ro_cl), re_c = re_c/sum(re_c))%>%
+  inner_join(posseldf)%>%
+  ungroup%>%
+  select(-set,-re_c,-count,-position)%>%
+  dplyr::rename('RUST_score':=ro_cl)%>%
+  pivot_wider(names_from='site',values_from='RUST_score')
+
+allcodondt %>%write_tsv('tables/allcodondt.tsv')
 
 
 # ## Define 'YIELD', 'MAP' and 'REDUCE' functions.
