@@ -1,7 +1,12 @@
 ################################################################################
 ########## Range manipulation
 ################################################################################
-#' @import tidyverse
+#' @import stringr
+#' @import readr
+#' @import magrittr
+#' @import purrr
+#' @import dplyr
+#' @import BiocGenerics
 #' @import GenomicRanges
 NULL
 

@@ -40,4 +40,5 @@ Depends:
     purrr,
     magrittr,
     S4Vectors,
+    BiocGenerics,
     GenomicRanges
