@@ -505,13 +505,13 @@ make_ext_fasta <- function(gtf, fasta, outfasta, fpext = 50, tpext = 50) {
   anno <- filter_anno(anno, fasta)
 
   cdsgrl <- anno$cdsgrl
-  exonsgrl <- anno$exonsgrl
-  cdsexonsgrl <- anno$exonsgrl
+  exonsgrl <- anno$exonsgrl[names(cdsgrl)]
+  cdsexonsgrl <- anno$exonsgrl[names(cdsgrl)]
   cdsstartpos <- start(anno$trspacecds@unlistData)
   # get exons for our cds
   cdsexonsgrl %<>% sort_grl_st
   # get an object representing the CDS In transript space
-  cdstrspace <- anno$trspacecds
+  cdstrspace <- anno$trspacecds[names(cdsgrl)]
   endpos <- sum(width(cdsexonsgrl)) - end(cdstrspace@unlistData)
   # expand our first exon when needed
   startposexpansion <- pmax(0, fpext - cdsstartpos + 1)
@@ -523,13 +523,13 @@ make_ext_fasta <- function(gtf, fasta, outfasta, fpext = 50, tpext = 50) {
   # expand or trim the last exon when needed
   endposexpansion <- pmax(0, tpext - endpos)
   endinds <- cdsexonsgrl@partitioning@end
-  cdsexonsgrl@unlistData[] %<>% resize(
+  cdsexonsgrl@unlistData[endinds] %<>% resize(
     width(.) + endposexpansion, "start"
   )
-
-  # now map our cds to that
-  cds_exptrspc <- GenomicFeatures::pmapToTranscripts(cdsgrl, cdsexonsgrl)
+  cds_exptrspc <- GenomicFeatures::pmapToTranscripts(cdsgrl,
+      cdsexonsgrl[names(cdsgrl)])
   stopifnot(cds_exptrspc %>% elementNROWS() %>% `==`(1))
+
 
   expcds_exptrspc <- cds_exptrspc
   stopifnot(!any(expcds_exptrspc %>% elementNROWS() %>% `>`(1)))
@@ -609,3 +609,6 @@ make_ext_fasta <- function(gtf, fasta, outfasta, fpext = 50, tpext = 50) {
   message(normalizePath(shortheaderfasta, mustWork = TRUE))
   return(outfasta)
 }
+
+
+
