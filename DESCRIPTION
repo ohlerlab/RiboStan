@@ -1,24 +1,20 @@
 Package: Ribostan
 Title: Estimates Isoform Specific RPF Footprint Densities
-Version: 0.99.0
+Version: 0.0.0.9000
 Authors@R: 
-    person(given = "Dermot",
-           family = "Harentt",
+    person(given = "First",
+           family = "Last",
            role = c("aut", "cre"),
-           email = "zslastman@gmail.com",
-           comment = c(github = "www.github.com/zslastman"))
-Description: Ribostan is a simple package which contains functionality related
-  to ribosomal footprint data and quantitative analysis thereof. It includes
-  functions to align A/P sites by maximizing including in the CDS, to produce
-  plots of KL divergence in 'metacodon' plots, and to estimate Ribosomal Footprint
-  densities in an isoform aware manner.
+           email = "first.last@example.com",
+           comment = c(ORCID = "YOUR-ORCID-ID"))
+Description: What the package does (one paragraph).
 License: `use_mit_license()`, `use_gpl3_license()` or friends to
     pick a license
 Encoding: UTF-8
+LazyData: true
 Roxygen: list(markdown = TRUE)
-RoxygenNote: 7.1.2
-biocViews: RiboSeq, Sequencing, QualityControl, DataImport, GenomeAnnotation,
-  Transcriptomics, Software, Coverage, RNASeq
+RoxygenNote: 7.1.1
+biocViews: RiboSeq, Sequencing, QualityControl, DataImport, GenomeAnnotation, Transcriptomics, Software, Coverage, RNASeq
 Imports:
     data.table,
     rtracklayer,
@@ -33,12 +29,7 @@ Imports:
     GenomicAlignments,
     GenomeInfoDb,
 Depends:
-    R (>= 4.1.0),
-    dplyr,
-    readr,
-    stringr,
-    purrr,
-    magrittr,
-    S4Vectors,
-    BiocGenerics,
+    tidyverse,
+    S4Vectors, 
     GenomicRanges
+

@@ -8,7 +8,12 @@
 #' @import dplyr
 #' @import BiocGenerics
 #' @import GenomicRanges
-NULL
+#' @
+#' @importFrom tidyr replace_na
+
+
+
+
 
 #' Index vector for a GRanges list object with the sub-elements ordered 5' to 3'
 #'
@@ -20,7 +25,7 @@ NULL
 #'  5' to 3'
 
 str_order_grl <- function(grl) {
-  BiocGenerics::order(start(grl) * (((strand(grl) != "-") + 1) * 2 - 3))
+  order(start(grl) * (((strand(grl) != "-") + 1) * 2 - 3))
 }
 
 #' Sort a GRanges list object with the sub-elements ordered 5' to 3'
@@ -112,7 +117,7 @@ resize_grl <- function(grl, gwidth, fix = "start", check = TRUE) {
       stop(errortxt)
     }
     grlseqs <- as.vector(unlist(use.names = F, seqnames(grl)[IntegerList(as.list(rep(1, length(grl))))]))
-    endhighvect <- (GenomicRanges::end(grl) > GenomeInfoDb::seqlengths(grl)[grlseqs])
+    endhighvect <- (end(grl) > GenomeInfoDb::seqlengths(grl)[grlseqs])
     endstoohigh <- any(endhighvect)
     if (any(endstoohigh)) {
       errortxt <- str_interp(paste0(
@@ -157,8 +162,8 @@ fmcols <- function(grl, ...) {
 
 is_out_of_bounds <- function(gr, si = seqinfo(gr)) {
   if (is(gr, "GenomicRangesList")) {
-    grchrs <- as.character(BiocGenerics::unlist(seqnames(gr)))
-    is_out <- end(gr) > GenomicRanges::split(
+    grchrs <- as.character(unlist(seqnames(gr)))
+    is_out <- end(gr) > split(
       seqlengths(si)[grchrs],
       gr@partitioning
     )
@@ -248,13 +253,17 @@ hasMstart <- function(cdsgrl, fafileob) {
 
 get_trspace_cds <- function(cdsgrl, exonsgrl) {
   # now lift cds to exons space
-  trspacecds <- GenomicFeatures::pmapToTranscripts(
-    cdsgrl,
-    exonsgrl[names(cdsgrl)]
-  )
-  # ensure all cds map cleanly to the exons
-  stopifnot(trspacecds %>% elementNROWS() %>% `==`(1))
-  stopifnot(names(trspacecds) == names(cdsgrl))
+  # nouorf <- cdsgrl%>%names%>%str_detect('_')%>%`!`
+  trspacecds <- 
+    cdsgrl%>%
+    # cdsgrl[nouorf]%>% 
+    GenomicFeatures::pmapToTranscripts(
+      exonsgrl[fmcols(., transcript_id)]
+      # exonsgrl['ENST00000000442.11']
+    )
+  stopifnot(all(elementNROWS(trspacecds)==1))
+  trspacecds <- unlist(trspacecds)
+  strand(trspacecds) <- '+'
   trspacecds
 }
 
@@ -277,8 +286,8 @@ get_cdsgrl <- function(filt_anno, fafileob, ignore_orf_validity) {
   # find which cds are multiples of 3bp
 
   cdsgrl <- filt_anno %>%
-    BiocGenerics::subset(., type == "CDS") %>%
-    GenomicRanges::split(., .$transcript_id)
+    subset(., type == "CDS") %>%
+    split(., .$transcript_id)
 
   is3bp <- cdsgrl %>%
     width() %>%
@@ -292,7 +301,7 @@ get_cdsgrl <- function(filt_anno, fafileob, ignore_orf_validity) {
     " multiples of 3bp long"
   )))
   # chceck if the cds includes the stop codon
-  cdsgrl %<>% sort_grl_st
+  cdsgrl <- sort_grl_st(cdsgrl)
   cdsseqends <- cdsgrl %>%
     resize_grl(3, "end") %>%
     resize_grl(sum(width(.)) + 3) %>%
@@ -302,10 +311,7 @@ get_cdsgrl <- function(filt_anno, fafileob, ignore_orf_validity) {
   filterchars <- cdsseqends %>% str_detect("[^ATCG]")
   cdsseqends[filterchars] <- "AAAAAA"
   cdsseqends <- Biostrings::translate(cdsseqends)
-  stopifnot(cdsseqends %>%
-    {
-      Biostrings::nchar(.)
-    } %>% is_in(2))
+  stopifnot(Biostrings::nchar(cdsseqends)%in%2)
   # now determine if the annotations 'cds' include stop codons
   # if they do, fix that.
   end_stop <- table(subseq(cdsseqends, 1, 1)) %>%
@@ -372,26 +378,6 @@ width1grs <- function(gr) {
   sort(c(gr[isw1], narrow))
 }
 
-#' Add 'phase' column to a set of reads, given a vector of cds starts
-#'
-#' Given rpfs, and named vectors of starts and stops, this adds the 'phase'
-#' to the reads
-#' @keywords Ribostan
-#' @author Dermot Harnett, \email{dermot.p.harnett@gmail.com}
-#'
-#' @param rpfs GRanges object with RPFs
-#' @param cdsstarts named vector of cds starts
-#'
-#' @return the rpf granges but wth a 'phase' column
-
-# TODO update this so it works with uORFs
-
-addphase <- function(gr, cdsstarts) {
-  cdsstarts <- cdsstarts[as.vector(seqnames(gr))]
-  gr$phase <- unlist((start(gr) - cdsstarts) %% 3)
-  gr
-}
-
 ################################################################################
 ##########
 ################################################################################
@@ -404,6 +390,7 @@ addphase <- function(gr, cdsstarts) {
 #'
 #' @param filt_anno GRanges; an unfilted imported GTF
 #' @param fafileob FaFile; a genomic Fasta file
+#' @param add_uorfs Whether to look for and include uORFs
 #' @details This takes only coding sequences which are a multiple of 3bp and
 #' have a start and a stop on either end. it always returns coding sequences
 #' without the stops, regardless of their extent in the input.
@@ -411,37 +398,13 @@ addphase <- function(gr, cdsstarts) {
 
 # TODO use a txdb object for this instead, simplify the object, maybe include
 # fasta with it.
-#' @importFrom GenomeInfoDb seqlevels
-#' @importFrom GenomeInfoDb seqlevels
 
-filter_anno <- function(anno, fafile, ignore_orf_validity = F) {
+filter_anno <- function(anno, fafile, add_uorfs=TRUE,
+  ignore_orf_validity = FALSE) {
   fafileob <- Rsamtools::FaFile(fafile)
   Rsamtools::indexFa(fafile)
   seqinfo(anno) <- seqinfo(fafileob)[as.vector(seqlevels(anno))]
   filt_anno <- anno
-  require(Biostrings)
-
-  # get the cds not including stop codons, possibly filtering for valid orfs
-  cdsgrl <- get_cdsgrl(filt_anno, fafileob, ignore_orf_validity)
-  #
-  # subset cds and anno with these
-  filt_anno <- filt_anno %>%
-    subset(type != "CDS") %>%
-    subset(transcript_id %in% names(cdsgrl))
-  filt_anno <- c(filt_anno, unlist(cdsgrl))
-  #
-  ribocovtrs <- names(cdsgrl)
-  #
-  exonsgrl <- filt_anno %>%
-    subset(type == "exon") %>%
-    GenomicRanges::split(., .$transcript_id) %>%
-    .[names(cdsgrl)]
-  #
-  trspacecds <- get_trspace_cds(cdsgrl, exonsgrl)
-  #
-  cdsstarts <- trspacecds %>%
-    start() %>%
-    setNames(names(trspacecds))
   #
   trgiddf <- anno %>%
     mcols() %>%
@@ -449,12 +412,69 @@ filter_anno <- function(anno, fafile, ignore_orf_validity = F) {
     as.data.frame() %>%
     distinct() %>%
     filter(!is.na(transcript_id))
+
+  # get the cds not including stop codons, possibly filtering for valid orfs
+  cdsgrl <- get_cdsgrl(filt_anno, fafileob, ignore_orf_validity)
+  #
+  if(add_uorfs){
+    message('adding uORFs..')
+    txdb <- GenomicFeatures::makeTxDbFromGRanges(anno)
+    fiveutrs = GenomicFeatures::fiveUTRsByTranscript(txdb, use.names=T)
+    alluORFs <- findUORFs(fiveutrs, fafile)
+    alluORFs <- alluORFs%>%{.@unlistData@ranges@NAMES<-NULL;.}%>%unlist
+    # uorftrs <- names(alluORFs_ul)%>%str_replace('_\\d+$', '')
+    alluORFs$transcript_id <- names(alluORFs)%>%str_replace('_\\d+$', '')
+    alluORFs$type <- 'CDS'
+    alluORFs$gene_id <- trgiddf$gene_id[
+      match(alluORFs$transcript_id,trgiddf$transcript_id)]
+    cdsgrl <- c(cdsgrl,alluORFs%>%split(.,names(.)))
+    names(cdsgrl@unlistData)<-NULL
+    trgiddf <- unlist(cdsgrl)%>%
+      {data.frame(
+        orf_id = names(.),
+        transcript_id = .$transcript_id,
+        gene_id = .$gene_id
+      )}%>%
+      distinct
+    trgiddf$uORF <- trgiddf$transcript_id%in%names(alluORFs)
+    is_uORF <-  names(cdsgrl)%in%names(alluORFs)
+    message('uORFs found')
+  }
+  #
+  ribocovtrs <- unique(trgiddf$transcript_id)
+  # subset cds and anno with these
+  filt_anno <- filt_anno %>%
+    subset(type != "CDS") %>%
+    subset(transcript_id %in% ribocovtrs)
+  #
+  filt_anno <- c(filt_anno, unlist(cdsgrl))
+  exonsgrl <- filt_anno %>%
+    subset(type == "exon") %>%
+    split(., .$transcript_id)
+  exonsgrl <- exonsgrl[ribocovtrs]
+  trspacecds <- get_trspace_cds(cdsgrl, exonsgrl)
+  #
+  cdsstarts <- trspacecds %>%
+    start() %>%
+    setNames(names(trspacecds))
+  #
+  longtrs <- width(exonsgrl)%>%
+    sum%>%tibble::enframe('transcript_id','width')%>%
+    left_join(trgiddf)%>%
+    group_by(gene_id)%>%
+    arrange(-width)%>%
+    dplyr::slice(1)%>%
+    .$transcript_id
+  #
   outanno <- list(
     ribocovtrs = ribocovtrs,
     trspacecds = trspacecds,
     cdsgrl = cdsgrl,
     exonsgrl = exonsgrl,
-    trgiddf = trgiddf
+    trgiddf = trgiddf,
+    fafileob = fafileob,
+    longtrs = longtrs,
+    uORF = is_uORF
   )
   outanno <- c(
     outanno,
@@ -468,6 +488,8 @@ filter_anno <- function(anno, fafile, ignore_orf_validity = F) {
   )
   return(outanno)
 }
+
+#
 
 
 #' Create a fasta file of coding sequences extended nbp on either end.
@@ -509,7 +531,7 @@ make_ext_fasta <- function(gtf, fasta, outfasta, fpext = 50, tpext = 50) {
   cdsexonsgrl <- anno$exonsgrl[names(cdsgrl)]
   cdsstartpos <- start(anno$trspacecds@unlistData)
   # get exons for our cds
-  cdsexonsgrl %<>% sort_grl_st
+  cdsexonsgrl <- sort_grl_st(cdsexonsgrl)
   # get an object representing the CDS In transript space
   cdstrspace <- anno$trspacecds[names(cdsgrl)]
   endpos <- sum(width(cdsexonsgrl)) - end(cdstrspace@unlistData)
@@ -517,15 +539,13 @@ make_ext_fasta <- function(gtf, fasta, outfasta, fpext = 50, tpext = 50) {
   startposexpansion <- pmax(0, fpext - cdsstartpos + 1)
   # expand/trim the 5' end of the exons
   startinds <- start(cdsexonsgrl@partitioning)
-  cdsexonsgrl@unlistData[startinds] %<>% resize(
-    width(.) + startposexpansion, "end"
-  )
+  cdsexonsgrl@unlistData[startinds] <- cdsexonsgrl@unlistData[startinds]%>%
+  resize(width(.) + startposexpansion, "end")
   # expand or trim the last exon when needed
   endposexpansion <- pmax(0, tpext - endpos)
   endinds <- cdsexonsgrl@partitioning@end
-  cdsexonsgrl@unlistData[endinds] %<>% resize(
-    width(.) + endposexpansion, "start"
-  )
+  cdsexonsgrl@unlistData[endinds] <- cdsexonsgrl@unlistData[endinds] %>%
+  resize(width(.) + endposexpansion, "start")
   cds_exptrspc <- GenomicFeatures::pmapToTranscripts(cdsgrl,
       cdsexonsgrl[names(cdsgrl)])
   stopifnot(cds_exptrspc %>% elementNROWS() %>% `==`(1))
@@ -533,14 +553,16 @@ make_ext_fasta <- function(gtf, fasta, outfasta, fpext = 50, tpext = 50) {
 
   expcds_exptrspc <- cds_exptrspc
   stopifnot(!any(expcds_exptrspc %>% elementNROWS() %>% `>`(1)))
-  expcds_exptrspc %<>% unlist
+  expcds_exptrspc <- unlist(expcds_exptrspc)
   # expand our cds exons
-  expcds_exptrspc %<>% resize(width(.) + fpext, "end", ignore.strand = TRUE)
+  expcds_exptrspc <- resize(expcds_exptrspc,width(.) + fpext, "end",
+    ignore.strand = TRUE)
   # and expand the 3' ends
-  expcds_exptrspc %<>% resize(width(.) + tpext, "start", ignore.strand = TRUE)
+  expcds_exptrspc <- resize(expcds_exptrspc, width(.) + tpext, "start",
+    ignore.strand = TRUE)
   # now back to genome space
   expcdsgenspace <- spl_mapFromTranscripts(expcds_exptrspc, cdsexonsgrl)
-  expcdsgenspace <- GenomicRanges::split(expcdsgenspace, names(expcdsgenspace))
+  expcdsgenspace <- split(expcdsgenspace, names(expcdsgenspace))
   # get the sequences
   fafileob <- Rsamtools::FaFile(fasta)
   isoutofbds <- any(is_out_of_bounds(expcdsgenspace, seqinfo(fafileob)))

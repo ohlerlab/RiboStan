@@ -12,8 +12,8 @@
 
 
 add_cor_offset <- function(rpfs, anno) {
-  cdsstarts <- anno$cdsstarts
-  cds_prestop_st <- anno$cds_prestop_st
+  cdsstarts <- anno$cdsstarts%>%unlist
+  cds_prestop_st <- anno$cds_prestop_st%>%unlist
 
   rpfs <- rpfs %>%
     as("GRanges") %>%
@@ -45,7 +45,6 @@ add_cor_offset <- function(rpfs, anno) {
 #'
 #' @param rpfs GRanges object with RPFs
 #' @param anno annotation object
-#' @param fafile Genomic Fasta file
 #'
 #' @return a data frame with the best offset per read/phase
 #' @export
@@ -54,20 +53,21 @@ add_cor_offset <- function(rpfs, anno) {
 # TODO maybe also shortedn this by removing arguments?
 # TODO remove the hardcoded numbers
 
-get_incl_max_offsets <- function(rpfs, anno, fafile) {
+get_incl_max_offsets <- function(rpfs, anno)
+
+{
   stopifnot("readlen" %in% colnames(mcols(rpfs)))
   #
   rpfs <- rpfs %>% add_cor_offset(anno)
   #
-  rpfs$readlen %<>% as.numeric
-  rpfs$startoffset %>% table()
+  rpfs$readlen <- as.numeric(rpfs$readlen)
   if (!"score" %in% colnames(mcols(rpfs))) rpfs$score <- 1
   # data frame with numbers of reads gained at a specific offset
   gaindf <- rpfs %>%
     subset((startoffset < readlen - 5) & (startoffset > 5)) %>%
     mcols(.) %>%
     .[, c("startoffset", "score", "readlen", "phase")] %>%
-    as.data.frame() %>%
+    as.data.frame() %>% 
     group_by(phase, readlen, startoffset) %>%
     tally(wt = score) %>%
     arrange(startoffset) %>%
@@ -92,7 +92,7 @@ get_incl_max_offsets <- function(rpfs, anno, fafile) {
   # less than that
   #
   netdf <- gaindf %>%
-    full_join(lossdf, by = c("readlen", "offset", "phase")) %>%
+    full_join(lossdf, by = c("readlen", "p_offset", "phase")) %>%
     mutate(net = replace_na(gain, 0) - replace_na(loss, 0)) %>%
     group_by(readlen) %>%
     arrange(readlen, p_offset) %>%
@@ -101,7 +101,7 @@ get_incl_max_offsets <- function(rpfs, anno, fafile) {
   readlens <- rpfs$readlen %>% unique()
   #
   allpos <-
-    map(readlens, function(rl) {
+    lapply(readlens, function(rl) {
       expand.grid(
         readlen = rl,
         phase = 0:2,
@@ -140,19 +140,23 @@ get_incl_max_offsets <- function(rpfs, anno, fafile) {
 #' @keywords Ribostan
 #' @author Dermot Harnett, \email{dermot.p.harnett@gmail.com}
 #'
-#' @param rpfs GRanges object with RPFs
+#' @param input GRanges object with RPFs or a bam file with RPFs
 #' @param anno annotation object
-#' @param fafile Genomic Fasta file
 #' @param method Method for p-site determination. Defaults to 'cds_incl'
 #'
 #' @return a dataframe with p-site offsets per readlength
 #' @export
 
 # TODO Add reference to a-p-site paper
-
-get_offsets <- function(rpfs, anno, fafile, method = "cds_incl") {
+#input = ribobam
+get_offsets <- function(input, anno, method = "cds_incl") {
+  if(is.character(input)&(length(input)==1)){
+    message('loading footprint data')
+    rpfs <- get_readgr(input, anno)
+  }
+  #
   if (method == "cds_incl") {
-    best_offsets <- get_incl_max_offsets(rpfs, anno, fafile)
+    best_offsets <- get_incl_max_offsets(rpfs, anno)
   } else {
     stop("not yet implemented")
   }
