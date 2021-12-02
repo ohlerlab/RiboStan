@@ -109,7 +109,8 @@ get_incl_max_offsets <- function(rpfs, anno)
     }) %>%
     bind_rows() %>%
     filter((p_offset %% 3) == 0)
-  netdf <- allpos %>% left_join(netdf)
+  netdf <- allpos %>% left_join(netdf, 
+    by = c("readlen", "p_offset", "phase"))
   netdf <- netdf %>%
     mutate(net = replace_na(net, 0)) %>%
     mutate(twind = net + lag(net) + lead(net))
@@ -148,6 +149,11 @@ get_incl_max_offsets <- function(rpfs, anno)
 #' cov <- get_readgr(ribobam, anno)
 #' offsets_df <- get_offsets(cov, anno)
 #' @export
+#' @examples
+#' data(chr22_anno)
+#' data(rpfs)
+#'  data(offsets_df)
+#'  testoffsets_df <- get_offsets(rpfs, chr22_anno)
 
 # TODO Add reference to a-p-site paper
 #input = ribobam

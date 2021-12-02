@@ -1,4 +1,4 @@
-#' @importFrom multitaper dpss spec.mtm
+#' @importFrom multitaper dpss spec.mtm dropFreqs
 NULL 
 
 #' Test a numeric vector for periodicity using the multitaper package
@@ -30,8 +30,8 @@ ftestvect<-function(psit,k=24,bw=12){
   #
   resSpec1 <- spec.mtm(as.ts(psit), k=k, nw=bw, nFFT = padding, 
     centreWithSlepians = TRUE, Ftest = TRUE, 
-    maxAdaptiveIterations = 100,returnZeroFreq=F,
-    plot=F,dpssIN=slepians_values)
+    maxAdaptiveIterations = 100,returnZeroFreq=FALSE,
+    plot=FALSE,dpssIN=slepians_values)
   psit
   #
   resSpec2<-dropFreqs(resSpec1,0.29,0.39)
@@ -59,6 +59,12 @@ ftestvect<-function(psit,k=24,bw=12){
 #' @details This function applies a multitaper test to 
 #' @return a numeric vector with the spectral coefficient at 0.333... and the pvalue for the test
 #' @export
+#' @examples
+#' data(chr22_anno)
+#' data(rpfs)
+#' data(offsets_df)
+#' psites <- get_psite_gr(rpfs, offsets_df, chr22_anno)
+#' ftests = ftest_orfs(psites%>%head(10000), chr22_anno) 
 
 ftest_orfs<-function(psites, anno){
   #
@@ -66,7 +72,7 @@ ftest_orfs<-function(psites, anno){
   psitecov<-psites%>%
     {
         x <- .
-        out <-GenomicFeatures::mapToTranscripts(.,orfs,ignore.strand=T)
+        out <-GenomicFeatures::mapToTranscripts(.,orfs,ignore.strand=TRUE)
         out <- out[x$orf[out$xHits]==names(orfs)[out$transcriptsHits]]
         coverage(out)
     }
@@ -76,7 +82,7 @@ ftest_orfs<-function(psites, anno){
   #now run multitaper tests on our data using multiple
   #cores if available
   message('running multitaper tests, this will be slow for a full dataset...')
-  spec_tests <- psitecov%>%mclapply(ftestvect, mc.cores=ncores)
+  spec_tests <- psitecov%>%mclapply(F=ftestvect, mc.cores=ncores)
   #now format the output
   spec_test_df <- spec_tests%>%simplify2array%>%t
   spec_test_df <- spec_test_df%>%as.data.frame
@@ -87,7 +93,8 @@ ftest_orfs<-function(psites, anno){
   orflens <- width(orfs[spec_test_df$orf_id])
   spec_test_df$spec_coef <- spec_test_df$spec_coef/orflens
   #put in NA values for things we couldn't test
-  testdf <- tibble(orf_id = names(anno$cdsgrl))%>%left_join(spec_test_df)
+  testdf <- tibble(orf_id = names(orfs))%>%left_join(spec_test_df, by='orf_id')
+  testdf
 }
 
 

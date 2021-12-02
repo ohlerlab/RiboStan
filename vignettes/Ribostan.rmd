@@ -1,8 +1,17 @@
 ---
 title: "Ribostan"
+package: "Ribostan"
+author: "Dermot Harnett"
 output: 
  html_notebook:
   toc: yes
+output: 
+  BiocStyle::html_document
+vignette: >
+  %\VignetteIndexEntry{Ribostan}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}  
+
 ---
   
 # Vignette RiboEM
@@ -10,82 +19,62 @@ output:
 # Setup
   
 ```{r loadinglibraries, include=FALSE, echo=FALSE, eval=T}
-library(Ribostan)
+# library(Ribostan)
 ```
 
 
 
 ```{r}
 
-{
+#Loading annotation
+devtools::load_all('.')
 #
-source('R/anno.R')
-fafile = '/fast/AG_Ohler/dharnet/eif4f_pipeline/GRCh38.primary_assembly.genome.fa'
-anno <- load_annotation(fafile, fafile)
-}
+#first, let's load up some test data
+gtf <- system.file('extdata', 'gcv37.anno.chr22.gtf', package='Ribostan', 
+  mustWork=TRUE)
+fafile <- system.file('extdata', 'chr22.fa.gz', package='Ribostan',
+  mustWork=TRUE)
+#now load our annootation, filter out suspect ORFs, and find potential uORFs
+chr22_anno <- load_annotation(anno_file, fafile, add_uorfs=TRUE)
 
-source('R/get_offsets.R')
-source('R/get_ritpms.R')
-#
-cov <- get_readgr(ribobam, anno)
-offsets_df <- get_offsets(cov, anno)
-psites <- get_psite_gr(get_psite_gr, offsets_df, anno)
-#
-{
-source('R/get_ritpms.R')
-#
-ritpms <- get_ritpms(ritpm_opt)
-gritpms = gene_level_expr(ritpms, anno)
-}
+#now load Ribo-seq data, reading in the transcript-space alignments
+testbam <- system.file('extdata', 'chr22.bam', package='Ribostan',
+  mustWork=TRUE)
+rpfs <- get_readgr(testbam, chr22_anno)
+#determine offsets by maximum CDS occupancy
+offsets_df <- get_offsets(rpfs, chr22_anno)
+#use our offsets to determine p-site locations
+psites <- get_psite_gr(rpfs, offsets_df, chr22_anno)
 
-{
-source(('R/model_TE.R'))
-source('R/get_offsets.R')
-source('R/get_ritpms.R')
-ribocovtrs <- ritpms%>%Filter(f=function(x)x>10)%>%names
-mainORFs <- anno$trgiddf%>%filter(!uORF)%>%.$transcript_id
-ribocovtrs <- intersect(ribocovtrs, mainORFs)
-#save.image('dev.Rdata')
-#
-rust_codon_occ_df <- get_codon_occs(psites, offsets_df, anno,
+#now, use Stan to estimate normalized p-site densities for our data
+ritpms <- get_ritpms(psites, chr22_anno)
+#and get these at the gene level (ignoring uORFs)
+gritpms = gene_level_expr(ritpms, chr22_anno)
+
+#get codon-level occupanies using RUST
+rust_codon_occ_df <- get_codon_occs(psites, offsets_df, chr22_anno,
   n_genes=1000, method='RUST_glm')
-tr_elong = get_predicted_codon_occs(anno, fafile, rust_codon_occ_df)
-gn_elong = gene_level_elong(tr_elong, ritpms, anno)
-}
+#get predicted mean elongation rates for ORFs
+orf_elong = get_orf_elong(chr22_anno, rust_codon_occ_df)
+#and at the gene level, ingoring uORFs
+gn_elong = gene_level_elong(orf_elong, ritpms, chr22_anno)
 
-{
-selreadlens=27:33
-source('R/kl_div.R')
-covgrs = list(sample1=sampled_cov_gr)
-kl_df<-get_kl_df(fprustprofilelist)
+#Using the KL divergence, deterine offsets in a way that's not dependent on
+#patterns at the start/stop
+covgrs = list(sample1=rpfs)
+metacodondf <- get_metacodon_profs(covgrs, chr22_anno)
+kl_df<-get_kl_df(metacodondf, chr22_anno)
 kl_offsets <- select_offsets(kl_df)
-kl_offsets%>%select(p_offset,length=nreadlen)%>%readr::write_tsv('offsets_rustvar.tsv')
+kl_offsets%>%select(p_offset,length=nreadlen)%>%
+  readr::write_tsv('offsets_rustvar.tsv')
 #
-kl_div_plot <- plot_kl_dv(kl_df, kl_offsets, selreadlens)
+kl_div_plot <- plot_kl_dv(kl_df, kl_offsets)
 #
-# pdf<-grDevices::pdf
-# dir.create('plots')
-# plotfile='plots/rust_fppos_vs_codon_variance.pdf'
-# pdf(plotfile,w=12,h=1+3*length(selreadlens))
-kl_div_plot%>%print
-# dev.off()
-# message(normalizePath(plotfile))
-#
-allcodondt <- export_codon_dts(fprustprofilelist, kl_offsets)
-allcodondt %>% readr::write_tsv('allcodondt.tsv')
-#
-}
+allcodondt <- export_codon_dts(metacodondf, kl_offsets)
+kable(allcodondt)
 
-{
-
-}
-
-#annotation
-#data loading
-#offsets
 #Metaplots
 #Kl plot
-#quantification
 #Detect Periodicity
 #Gene level Elong
 

@@ -20,6 +20,33 @@ select <- dplyr::select
 pivot_longer <- tidyr::pivot_longer
 rownames_to_column <- tibble::rownames_to_column
 }
+  #
+gtf <- '../cortexomics/ext_data/gencode.vM12.annotation.gtf'
+ribobam <- '../cortexomics/pipeline/star_transcript/data/E13_ribo_1/E13_ribo_1.bam'
+
+gtf <- '../eif4f_pipeline/ext_data/gencode.v37.primary_assembly.annotation.gtf'
+ribobam <- '../eif4f_pipeline/pipeline/merged_pc_wt.sort.bam'
+source('R/anno.R')
+source('R/get_tpms.R')
+source('R/get_offsets.R')
+source('R/find_ORFs.R')
+#
+#
+ribobams <- Sys.glob('/fast/AG_Ohler/dharnet/eif4f_pipeline/pipeline/star/pc/data/4E_-IAA_rep*/*.bam')
+ribobam <- ribobams[1]
+fafile = '/fast/AG_Ohler/dharnet/eif4f_pipeline/GRCh38.primary_assembly.genome.fa'
+# make_ext_fasta(gtf=gtf,fa=fafile,out="foo.fa")
+#
+anno <- rtracklayer::import(gtf)
+anno <- filter_anno(anno, fafile)
+
+txdb <- GenomicFeatures::makeTxDbFromGFF(gtf)
+
+library(GenomicFeatures)
+
+fiveutrs = fiveUTRsByTranscript(txdb, use.names=T)
+alluORFs <- findUORFs(fiveutrs, fafile)
+
 
 {
 #

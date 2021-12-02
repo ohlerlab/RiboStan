@@ -1,19 +1,26 @@
 ################################################################################
 ########## Range manipulation
 ################################################################################
-#' @import stringr
-#' @import readr
+#' @importFrom stringr str_detect str_replace str_subset str_interp 
+#' @importFrom stringr str_split_fixed str_extract
+#' @importFrom readr write_tsv read_tsv
 # #' @import magrittr
 # #' @import purrr
-#' @import dplyr
+# # ' @import dplyr
+#' @import Biostrings 
+#' @import testthat
+# # ' @import BiocGenerics intersect setdiff unlist table
+#' @importFrom BiocGenerics intersect setdiff unlist table union mean
 #' @import ggplot2
-#' @import Biostrings
-#' @import BiocGenerics
-#' @importFrom GenomeInfoDb Seqinfo keepSeqlevels seqlevels seqlengths
+#' @importFrom GenomeInfoDb Seqinfo keepSeqlevels seqlevels seqlengths seqinfo
 #' @importFrom Biostrings subseq codons oligonucleotideFrequency
-#' @import GenomicRanges
-#' @importFrom tidyr replace_na
-#' @importFrom dplyr mutate select filter
+#' @importFrom GenomicRanges GRanges split GenomicRangesList strand
+#' @importFrom rtracklayer import export
+#' @importFrom Rsamtools ScanBamParam
+#' @importFrom tidyr replace_na unnest
+#' @importFrom dplyr mutate select filter lead summarise tally slice %>% lag  
+#' @importFrom dplyr left_join group_by ungroup tibble inner_join bind_rows
+#' @importFrom dplyr distinct arrange n count between full_join one_of n_distinct 
 
 NULL
 
@@ -28,7 +35,7 @@ NULL
 #' @return Index vector for a GRanges list object with the sub-elements ordered
 #'  5' to 3'
 
-str_order_grl <- function(grl) {
+order_grl_st <- function(grl) {
   order(start(grl) * (((strand(grl) != "-") + 1) * 2 - 3))
 }
 
@@ -40,7 +47,7 @@ str_order_grl <- function(grl) {
 #' @param grl GRangesList; a GRangesList object
 #' @return A GRangeList object with the sub-elements ordered 5' to 3'
 
-sort_grl_st <- function(grl) grl[str_order_grl(grl), ]
+sort_grl_st <- function(grl) grl[order_grl_st(grl), ]
 
 #' Resize a GRangesList object holding it's 5' end fixed
 #'
@@ -99,7 +106,7 @@ resize_grl_endfix <- function(grl, width) {
 
 resize_grl <- function(grl, gwidth, fix = "start", check = TRUE) {
   stopifnot(all(gwidth > 0))
-  stopifnot(all(all(diff(str_order_grl(grl)) == 1)))
+  stopifnot(all(all(diff(order_grl_st(grl)) == 1)))
   if (fix == "start") {
     grl <- resize_grl_startfix(grl, gwidth)
   } else if (fix == "end") {
@@ -120,7 +127,8 @@ resize_grl <- function(grl, gwidth, fix = "start", check = TRUE) {
       ))
       stop(errortxt)
     }
-    grlseqs <- as.vector(unlist(use.names = F, seqnames(grl)[IntegerList(as.list(rep(1, length(grl))))]))
+    intlistinds <- IntegerList(as.list(rep(1, length(grl))))
+    grlseqs <- as.vector(unlist(use.names = FALSE, seqnames(grl)[intlistinds]))
     endhighvect <- (end(grl) > GenomeInfoDb::seqlengths(grl)[grlseqs])
     endstoohigh <- any(endhighvect)
     if (any(endstoohigh)) {
@@ -138,7 +146,8 @@ resize_grl <- function(grl, gwidth, fix = "start", check = TRUE) {
 #' Pick columns from a GRangestList
 #'
 #' Given a grangelist of say N genes with X_n exons, this yields a
-#' length N vector pulled from the mcols of the first element of each list element
+#' length N vector pulled from the mcols of the first element of each list 
+#' element
 #'
 #' @keywords Ribostan
 #' @author Dermot Harnett, \email{dermot.p.harnett@gmail.com}
@@ -155,7 +164,8 @@ fmcols <- function(grl, ...) {
 #' Check if GRanges elements are out of bounds
 #'
 #' Given a grangelist of say N genes with X_n exons, this yields a
-#' length N vector pulled from the mcols of the first element of each list element
+#' length N vector pulled from the mcols of the first element of each 
+#' list element
 #'
 #' @keywords Ribostan
 #' @author Dermot Harnett, \email{dermot.p.harnett@gmail.com}
@@ -166,7 +176,7 @@ fmcols <- function(grl, ...) {
 
 is_out_of_bounds <- function(gr, si = seqinfo(gr)) {
   if (is(gr, "GenomicRangesList")) {
-    grchrs <- as.character(unlist(seqnames(gr)))
+    grchrs <- as.character(seqnames(gr@unlistData))
     is_out <- end(gr) > split(
       seqlengths(si)[grchrs],
       gr@partitioning
@@ -200,7 +210,7 @@ spl_mapFromTranscripts <- function(trspacegr, exons_grl) {
   ov <- findOverlaps(trspacegr, exons_tr)
   # make sure all our elements have exons
   stopifnot(all(unlist(unique(seqnames(trspacegr))) %in% names(exons_grl)))
-  stopifnot((1:length(trspacegr)) %in% queryHits(ov))
+  stopifnot((seq_along(trspacegr)) %in% queryHits(ov))
   # multiply our ranges
   trspacegr_spl <- suppressWarnings({
     trspacegr[queryHits(ov)]
@@ -288,7 +298,7 @@ get_trspace_cds <- function(cdsgrl, exonsgrl) {
 # TODO update this for uORFs
 get_cdsgrl <- function(filt_anno, fafileob, ignore_orf_validity) {
   # find which cds are multiples of 3bp
-
+  #
   cdsgrl <- filt_anno %>%
     subset(., type == "CDS") %>%
     split(., .$transcript_id)
@@ -378,7 +388,8 @@ width1grs <- function(gr) {
       IRanges(narrowstarts, w = 1)
     )
   }
-  mcols(narrow) <- mcols(broad)[rep(seq_along(broad), width(broad)), , drop = F]
+  binds <- rep(seq_along(broad), width(broad))
+  mcols(narrow) <- mcols(broad)[binds, , drop = FALSE]
   sort(c(gr[isw1], narrow))
 }
 
@@ -395,20 +406,29 @@ width1grs <- function(gr) {
 #' @param gtf A GTF with gene annotation
 #' @param fafileob FaFile; a genomic Fasta file
 #' @param add_uorfs Whether to look for and include uORFs
+#' @param keep_cols columns to save from the gtf metadata
 #' @details This takes only coding sequences which are a multiple of 3bp and
 #' have a start and a stop on either end. it always returns coding sequences
 #' without the stops, regardless of their extent in the input.
 #' @return a list containing annotation objects used by other functions.
 #' @export
 #' @examples
-#' download.file(paste0('https://ftp.ebi.ac.uk/pub/databases/gencode/',
-#'  'Gencode_human/release_19/gencode.v19.annotation.gtf.gz'))
-#' annotation <- filter_anno(gtf)
+#'  gtf <- system.file('extdata', 'gcv37.anno.chr22.gtf', package='Ribostan',
+#'         mustWork=TRUE)
+#'  fafile <- system.file('extdata', 'chr22.fa.gz', package='Ribostan',
+#'     mustWork=TRUE)
+#'  file.copy(fafile, '.')
+#'  system('gunzip -f chr22.fa.gz')
+#'  fafile = 'chr22.fa'
+#'  anno <- load_annotation(gtf, fafile)
 #' 
 
 load_annotation <- function(gtf, fafile, add_uorfs=TRUE,
-  ignore_orf_validity = FALSE) {
+  ignore_orf_validity = FALSE,
+  keep_cols= c('gene_id','transcript_id','gene_name','type')) {
   anno <- rtracklayer::import(gtf)
+  stopifnot(all(keep_cols%in%colnames(mcols(anno))))
+  anno <- anno[,keep_cols]
   fafileob <- Rsamtools::FaFile(fafile)
   Rsamtools::indexFa(fafile)
   seqinfo(anno) <- seqinfo(fafileob)[as.vector(seqlevels(anno))]
@@ -420,22 +440,29 @@ load_annotation <- function(gtf, fafile, add_uorfs=TRUE,
     as.data.frame() %>%
     distinct() %>%
     filter(!is.na(transcript_id))
-
   # get the cds not including stop codons, possibly filtering for valid orfs
   cdsgrl <- get_cdsgrl(filt_anno, fafileob, ignore_orf_validity)
   #
   if(add_uorfs){
     message('adding uORFs..')
+    anno$phase <- NULL
     txdb <- GenomicFeatures::makeTxDbFromGRanges(anno)
-    fiveutrs = GenomicFeatures::fiveUTRsByTranscript(txdb, use.names=T)
-    alluORFs <- findUORFs(fiveutrs, fafile)
+    fiveutrs = GenomicFeatures::fiveUTRsByTranscript(txdb, use.names=TRUE)
+    alluORFs <- ORFik::findUORFs(fiveutrs, fafile)
     alluORFs <- alluORFs%>%{.@unlistData@ranges@NAMES<-NULL;.}%>%unlist
     # uorftrs <- names(alluORFs_ul)%>%str_replace('_\\d+$', '')
     alluORFs$transcript_id <- names(alluORFs)%>%str_replace('_\\d+$', '')
     alluORFs$type <- 'CDS'
     alluORFs$gene_id <- trgiddf$gene_id[
       match(alluORFs$transcript_id,trgiddf$transcript_id)]
-    cdsgrl <- c(cdsgrl,alluORFs%>%split(.,names(.)))
+    #remove stop codon from uORFs  
+    alluORFs <- alluORFs%>%split(.,names(.))
+    stopifnot(is(alluORFs,'GRangesList'))
+    seqinfo(alluORFs)<-seqinfo(anno)
+    alluORFs<-alluORFs%>%resize_grl(sum(width(.))-3,'start')
+    #add uorfs to cdsgrl
+    cdsgrl <- c(cdsgrl,alluORFs)
+    #now modify metadata
     names(cdsgrl@unlistData)<-NULL
     trgiddf <- unlist(cdsgrl)%>%
       {data.frame(
@@ -446,7 +473,10 @@ load_annotation <- function(gtf, fafile, add_uorfs=TRUE,
       distinct
     trgiddf$uORF <- trgiddf$transcript_id%in%names(alluORFs)
     is_uORF <-  names(cdsgrl)%in%names(alluORFs)
+    names(is_uORF) <- names(cdsgrl)
     message('uORFs found')
+  }else{
+    is_uORF <- rep(FALSE, length(cdsgrl))
   }
   #
   ribocovtrs <- unique(trgiddf$transcript_id)
@@ -468,14 +498,13 @@ load_annotation <- function(gtf, fafile, add_uorfs=TRUE,
   #
   longtrs <- width(exonsgrl)%>%
     sum%>%tibble::enframe('transcript_id','width')%>%
-    left_join(trgiddf)%>%
+    left_join(trgiddf, 'transcript_id')%>%
     group_by(gene_id)%>%
     arrange(-width)%>%
     dplyr::slice(1)%>%
     .$transcript_id
   #
   outanno <- list(
-    ribocovtrs = ribocovtrs,
     trspacecds = trspacecds,
     cdsgrl = cdsgrl,
     exonsgrl = exonsgrl,
@@ -497,6 +526,30 @@ load_annotation <- function(gtf, fafile, add_uorfs=TRUE,
   return(outanno)
 }
 
+
+#' Subset an annotation object with a vector of ORF ids
+#'
+#' @keywords Ribostan
+#' @author Dermot Harnett, \email{dermot.p.harnett@gmail.com}
+#'
+#' @param orfs A vector of ORF ids
+#' @param anno an annotation object
+#' @return an annotation object, subsetted
+#' 
+subset_annotation <- function(orfs, anno){
+  newanno <- anno
+  newanno$trspacecds <- anno$trspacecds[orfs]
+  newanno$cdsgrl <- anno$cdsgrl[orfs]
+  orftrs <- unique(unlist(fmcols(anno$cdsgrl[orfs], transcript_id)))
+  newanno$exonsgrl <- anno$exonsgrl[orftrs]
+  newanno$trgiddf <- anno$trgiddf%>%filter(orf_id %in% orfs)
+  newanno$fafileob <- anno$fafileob
+  newanno$longtrs <- anno$longtrs%>%intersect(orftrs)
+  newanno$uORF <- anno$uORF[orfs]
+  newanno
+}
+
+
 #
 
 
@@ -516,7 +569,17 @@ load_annotation <- function(gtf, fafile, add_uorfs=TRUE,
 #' all sequences have the same 'UTRs'.
 #' @import GenomicRanges
 #' @return the name of the file to which the sequences were output
-
+#' @examples 
+#' gtf <- system.file('extdata', 'gcv37.anno.chr22.gtf', package='Ribostan',
+#'   mustWork=TRUE)
+#' fafile <- system.file('extdata', 'chr22.fa.gz', package='Ribostan',
+#'      mustWork=TRUE)
+#' file.copy(fafile, '.')
+#' system('gunzip -f chr22.fa.gz')
+#' fafile = 'chr22.fa'
+#' ext_fasta = make_ext_fasta(gtf, fafile, outfasta='tmp.fa', fpext=50, tpext=50)
+#'
+#'
 
 make_ext_fasta <- function(gtf, fasta, outfasta, fpext = 50, tpext = 50) {
   stopifnot({
@@ -531,18 +594,23 @@ make_ext_fasta <- function(gtf, fasta, outfasta, fpext = 50, tpext = 50) {
   outprefix <- outfasta %>% str_replace("\\.(fasta|fa)$", "")
 
   # get our filtered annotation
-  anno <- rtracklayer::import(gtf)
-  anno <- filter_anno(anno, fasta)
-
+  keepcols = c('transcript_id','type',
+    'gene_id',
+    'havana_gene',
+    'havana_transcript',
+    'transcript_name',
+    'gene_name')
+  anno <- load_annotation(gtf, fasta, add_uorfs=FALSE,
+    keep_cols = keepcols)
   cdsgrl <- anno$cdsgrl
   exonsgrl <- anno$exonsgrl[names(cdsgrl)]
   cdsexonsgrl <- anno$exonsgrl[names(cdsgrl)]
-  cdsstartpos <- start(anno$trspacecds@unlistData)
+  cdsstartpos <- start(anno$trspacecds)
   # get exons for our cds
   cdsexonsgrl <- sort_grl_st(cdsexonsgrl)
   # get an object representing the CDS In transript space
   cdstrspace <- anno$trspacecds[names(cdsgrl)]
-  endpos <- sum(width(cdsexonsgrl)) - end(cdstrspace@unlistData)
+  endpos <- sum(width(cdsexonsgrl)) - end(cdstrspace)
   # expand our first exon when needed
   startposexpansion <- pmax(0, fpext - cdsstartpos + 1)
   # expand/trim the 5' end of the exons
@@ -563,19 +631,20 @@ make_ext_fasta <- function(gtf, fasta, outfasta, fpext = 50, tpext = 50) {
   stopifnot(!any(expcds_exptrspc %>% elementNROWS() %>% `>`(1)))
   expcds_exptrspc <- unlist(expcds_exptrspc)
   # expand our cds exons
-  expcds_exptrspc <- resize(expcds_exptrspc,width(.) + fpext, "end",
+  expcds_exptrspc <- expcds_exptrspc%>%resize(.,width(.) + fpext, "end",
     ignore.strand = TRUE)
   # and expand the 3' ends
-  expcds_exptrspc <- resize(expcds_exptrspc, width(.) + tpext, "start",
+  expcds_exptrspc <- expcds_exptrspc %>% resize(., width(.) + tpext, "start",
     ignore.strand = TRUE)
   # now back to genome space
   expcdsgenspace <- spl_mapFromTranscripts(expcds_exptrspc, cdsexonsgrl)
-  expcdsgenspace <- split(expcdsgenspace, names(expcdsgenspace))
+  seqinfo(expcdsgenspace) <- seqinfo(cdsexonsgrl)
+  expcdsgenspace <- GenomicRanges::split(expcdsgenspace, names(expcdsgenspace))
   # get the sequences
-  fafileob <- Rsamtools::FaFile(fasta)
-  isoutofbds <- any(is_out_of_bounds(expcdsgenspace, seqinfo(fafileob)))
+  isoutofbds <- is_out_of_bounds(expcdsgenspace)
+  isoutofbds <- any(is_out_of_bounds(expcdsgenspace))
   message(str_interp(paste0(
-    "Excluded ${sum(isoutofbds)} genes because they",
+    "Excluded ${sum(isoutofbds)} orfs because they",
     " extended beyond chromosomal boundaries"
   )))
   expcdsgenspace <- expcdsgenspace[!isoutofbds]
@@ -584,7 +653,7 @@ make_ext_fasta <- function(gtf, fasta, outfasta, fpext = 50, tpext = 50) {
   expcdsgenspaceseq <-
     expcdsgenspace %>%
     sort_grl_st() %>%
-    GenomicFeatures::extractTranscriptSeqs(., x = fafileob)
+    GenomicFeatures::extractTranscriptSeqs(., x = anno$fafileob)
 
   cdslens <- sum(width(cdsgrl))[names(expcdsgenspace)]
   fastanames <- paste(
@@ -642,3 +711,54 @@ make_ext_fasta <- function(gtf, fasta, outfasta, fpext = 50, tpext = 50) {
 
 
 
+
+#' This creates a minimal annotation object from a gencode style fasta
+#'
+#' @keywords Ribostan
+#' @author Dermot Harnett, \email{dermot.p.harnett@gmail.com}
+#'
+#' @param ribofasta A gencode style fasta to which RPFs were aligned
+#' @return An annotation object with cdsstarts/stops
+#' @details The Ribosome densities are saved in salmon format
+#' @examples 
+#' gtf <- system.file('extdata', 'gcv37.anno.chr22.gtf', package='Ribostan', mustWork=TRUE)
+#' fafile <- system.file('extdata', 'chr22.fa.gz', package='Ribostan', mustWork=TRUE)
+#' file.copy(fafile, '.')
+#' system('gunzip -f chr22.fa.gz')
+#' fafile = 'chr22.fa'
+#' ext_fasta = make_ext_fasta(gtf, fafile, outfasta='tmp.fa', fpext=50, tpext=50)
+#' get_ribofasta_anno(ext_fasta)
+#' @export
+
+get_ribofasta_anno <- function(ribofasta) {
+  Rsamtools::indexFa(ribofasta)
+  faheadernames <- seqinfo(Rsamtools::FaFile(ribofasta))
+  faheaddf <- seqnames(faheadernames) %>%
+    as.vector() %>%
+    str_split_fixed("\\|", 10)
+  anno <- list()
+  anno$trspacecds <- GRanges(
+    faheaddf[, 1],
+    faheaddf[, 9] %>% str_extract("\\d+\\-\\d+") %>%
+      str_split_fixed("-", 2) %>% 
+      {colnames(.)<-c("start", "end"); .} %>%
+      apply(2, as.numeric) %>% as.data.frame() %>%
+      {
+        IRanges(start = .$start, end = .$end)
+      }
+  ) %>%
+    setNames(., as.character(seqnames(.)))
+  strand(anno$trspacecds)<-'+'
+  anno$trgiddf <- tibble(transcript_id = faheaddf[, 1], gene_id = faheaddf[, 2])
+  anno$trgiddf$orf_id <- anno$trgiddf$transcript_id
+  anno <- c(
+    anno,
+    list(
+      cdsstarts = anno$trspacecds %>% start() %>%
+        setNames(names(anno$trspacecds)),
+      cds_prestop_st = anno$trspacecds %>% end() %>% `-`(2) %>%
+        setNames(names(anno$trspacecds))
+    )
+  )
+  anno
+}

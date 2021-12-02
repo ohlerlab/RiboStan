@@ -42,7 +42,7 @@ get_cds_codons <- function(anno,
 		sort_grl_st%>%
 		GenomicFeatures::extractTranscriptSeqs(x = fafileob)
 	#data frame with codon and position info
-	codposdf <- get_codposdf(longorfs, anno, fafile)
+	codposdf <- get_codposdf(longorfs, anno)
 	#as a gr
 	codposdf <- GRanges(codposdf$orf_id,IRanges(codposdf$pos),codon=codposdf$codon)
 	codongr <- codposdf %>% GenomicFeatures::mapFromTranscripts(trspacecds)
@@ -52,20 +52,24 @@ get_cds_codons <- function(anno,
 	seqlevels(codongr)<-names(exonseq)
 	seqinfo(codongr)<-Seqinfo(names(exonseq),nchar(exonseq))
 	strand(codongr)<-'+'
-	# use only matches in the inner cds
-	codongr <- codongr %>% subsetByOverlaps(innercds)
 	# expand the windows around these codons
-	codmatchwindows <- matchgr %>%
-	resize(n_wind_l_ext, "end") %>%
-	resize(width(.)+n_wind_r_ext, "start")
+  codongrbak <- codongr
+	codongr <- codongr[(start(codongr)-1)>=n_wind_l_ext]
+  enddists <- (seqlengths(codongr)[as.character(seqnames(codongr))]-
+    end(codongr))
+  codongr <- codongr[enddists>=n_wind_r_ext]
+  codmatchwindows <- codongr %>%
+  	resize(n_wind_l_ext, "end") %>%
+  	resize(width(.)+n_wind_r_ext, "start")
 	# require these to be inside our cds
+  # use only matches in the inner cds
+  innercds <- trspacecds %>%
+    subset(width > (3 + n_start_buff + n_end_buff)) %>%
+    resize(width(.) - n_start_buff, "end") %>%
+    resize(width(.) - n_end_buff, "start")
+  codongr <- codongr %>% subsetByOverlaps(innercds)
 	codmatchwindows <- codmatchwindows[!is_out_of_bounds(codmatchwindows)]
 	# define inner cds - cds but with start and end trimmed off.
-	innercds <- trspacecds %>%
-	subset(width > (3 + n_start_buff + n_end_buff)) %>%
-	resize(width(.) - n_start_buff, "end") %>%
-	resize(width(.) - n_end_buff, "start")
-	#
 	codmatchwindows <- codmatchwindows%>%subsetByOverlaps(innercds)
 	# lift them to inner cds coordinates
 	cds_codons <- codmatchwindows %>% 
@@ -123,34 +127,37 @@ get_cov_rust_scores <- function(rpf_cov, cds_codons) {
 #' @author Dermot Harnett, \email{dermot.p.harnett@gmail.com}
 #'
 #' @param rpf_covs A list of SimpleRleLists - RPF coverage 
-#' @param cds_codons - GRanges object containing windows in which to get rust
+#' @param anno - an annotation object
 #' scores
 #'
 #' @details gets profiles of read 5' end occurence around codons
 #' @return A data frame with expected and actual rust score per position in
 #' window, codon, readlength
 
-get_sample_profs <- function(covgrs, cds_codons, n_wind_l_ext = 45) {
+get_metacodon_profs <- function(covgrs, anno, n_wind_l_ext = 45) {
+  are_psites <- covgrs%>%vapply(function(x) 'orf'%in%colnames(mcols(x)),TRUE)
+  stopifnot(!any(are_psites)) 
+  cds_codons <- get_cds_codons(anno)
+  
   stopifnot(!is.null(names(covgrs)))
   cdsfpcovlist <- lapply(covgrs, function(covgr) {
   	rlsplitcov <- split(resize(covgr, 1, "start"), covgr$readlen)
     lapply(rlsplitcov, coverage)
   })
   rust_roel <- mclapply(
-    mc.cores = 4, cdsfpcovlist, cds_codons = cds_codons,
+    mc.cores = detectCores(), cdsfpcovlist, cds_codons = cds_codons,
     get_cov_rust_scores
   )
   # https://www.nature.com/articles/ncomms12915#Sec10 see equation 3
   # of RUST paper
-  frustprofilelist <- bind_rows(rust_roel, .id = "sample")
+  metacodondf <- bind_rows(rust_roel, .id = "sample")
   #
-  frustprofilelist <- mutate(frustprofilelist, position = position - 1 - (n_wind_l_ext))
-  frustprofilelist <- filter(frustprofilelist, !codon %in% c("TAG", "TAA", "TGA"))
-  frustprofilelist <- mutate(frustprofilelist, count = ro_cl / re_c)
-  frustprofilelist$nreadlen <- frustprofilelist$readlen %>% as.numeric()
-  frustprofilelist
+  metacodondf <- mutate(metacodondf, position = position - 1 - (n_wind_l_ext))
+  metacodondf <- filter(metacodondf, !codon %in% c("TAG", "TAA", "TGA"))
+  metacodondf <- mutate(metacodondf, count = ro_cl / re_c)
+  metacodondf$nreadlen <- metacodondf$readlen %>% as.numeric()
+  metacodondf
 }
-
 
 #' Calculate KL-divergence from a data frame of rust expected and actual scores
 #'
@@ -158,17 +165,20 @@ get_sample_profs <- function(covgrs, cds_codons, n_wind_l_ext = 45) {
 #' @keywords Ribostan
 #' @author Dermot Harnett, \email{dermot.p.harnett@gmail.com}
 #'
-#' @param covgrs a list of GRanges objects with RPF data
-#'
+#' @param metacodondf a data frame with metacodon info
+#' @examples
+#'   data(chr22_anno)
+#'  data(rpfs)
+#'  data(offsets_df)
+#'  covgrs = list(sample1=rpfs)
+#'  #note this doesn't work that well on a small subset
+#'  kl_df<-get_kl_df(metacodondf, chr22_anno)
+#' 
 #' @return A data frame with expected and actual rust score per position in
 #' window, codon, readlength
 
-get_kl_df <- function(covgrs, anno) {
-  are_psites <- covgrs%>%vapply(function(x) 'orf'%in%colnames(mcols(x)),TRUE)
-  stopifnot(!any(are_psites)) 
-  cds_codons <- get_cds_codons(anno)
-  fprustprofilelist <- get_sample_profs(covgrs, cds_codons, n_wind_l_ext=45 )
-  frustprofilelist %>%
+get_kl_df <- function(metacodondf, anno) {
+  metacodondf %>%
     group_by(sample, nreadlen, position) %>%
     mutate(ro_cl = ro_cl / sum(ro_cl), re_c = re_c / sum(re_c)) %>%
     summarise(KL = sum(ro_cl * log2(ro_cl / re_c)),.groups='keep')
@@ -200,13 +210,22 @@ most_freq <- function(x) {
 #' @keywords Ribostan
 #' @author Dermot Harnett, \email{dermot.p.harnett@gmail.com}
 #'
-#' @param frustprofilelist A data frame with expected and actual rust score per position in
+#' @param metacodondf A data frame with expected and actual rust score per position in
 #' window, codon, readlength
 #' @param method means by which to select best offfset currently only possible value 
 #' is a_max - assumes the maximum KL divergence occurs under the A site
 #'
 #' @return a dataframe with p-site offsets per readlength, sample
+#' @examples
+#'   data(chr22_anno)
+#'  data(rpfs)
+#'  data(offsets_df)
+#'  covgrs = list(sample1=rpfs)
+#'  #note this doesn't work that well on a small subset
+#'  kl_df<-get_kl_df(covgrs, chr22_anno)#' 
+#'  kl_offsets <- select_offsets(kl_df)
 #' @export
+
 
 select_offsets <- function(kl_df, method='a_max') {
   if (method == "a_max") {
@@ -242,7 +261,9 @@ plot_kl_dv <- function(kl_df, kl_offsets, selreadlens = NULL) {
   stopifnot(c("position", "nreadlen", "KL", "sample") %in% colnames(kl_df))
   stopifnot(c("nreadlen", "sample", "p_offset") %in% colnames(kl_offsets))
   #
-  kl_offsets2plot <- kl_offsets %>% filter(nreadlen %in% selreadlens)
+  if(!is.null(selreadlens)) {
+    kl_offsets <- kl_offsets %>% filter(nreadlen %in% selreadlens)
+  }
   #
   kl_df %>%
     filter(position < -3) %>%
@@ -256,11 +277,11 @@ plot_kl_dv <- function(kl_df, kl_offsets, selreadlens = NULL) {
         scale_y_continuous("RUST KL divergence") +
         scale_x_continuous("5 read position relative to codon ") +
         geom_vline(
-          data = kl_offsets2plot, aes(xintercept = p_offset - 3),
+          data = kl_offsets, aes(xintercept = p_offset - 3),
           color = I("green"), linetype = 2
         ) +
         geom_vline(
-          data = kl_offsets2plot, aes(xintercept = p_offset),
+          data = kl_offsets, aes(xintercept = p_offset),
           color = I("blue"), linetype = 2
         ) +
         ggtitle("RUST KL divergence vs position")
@@ -275,28 +296,35 @@ plot_kl_dv <- function(kl_df, kl_offsets, selreadlens = NULL) {
 #' @keywords Ribostan
 #' @author Dermot Harnett, \email{dermot.p.harnett@gmail.com}
 #'
-#' @param frustprofilelist A data frame with expected and actual rust score per position in
+#' @param metacodondf A data frame with expected and actual rust score per position in
 #' window, codon, readlength
 #' @param kl_offsets A dataframe with p-site offsets per readlength, sample
 #'
 #' @return a dataframe occupancies for e,p and a sites for each sample
+#' @examples
+#' data(chr22_anno)
+#' data(rpfs)
+#' data(offsets_df)
+#' data(metacodondf)
+#' #note this doesn't work that well on a small subset
+#' kl_df<-get_kl_df(metacodondf, chr22_anno)
+#' kl_offsets <- select_offsets(kl_df)
+#' allcodondt <- export_codon_dts(metacodondf, kl_offsets)
 #' @export
-export_codon_dts <- function(frustprofilelist, kl_offsets){
+
+export_codon_dts <- function(metacodondf, kl_offsets){
   posseldf = bind_rows(
     kl_offsets%>%mutate(position=-p_offset+3,site='e_site')%>%select(nreadlen,position,site),
     kl_offsets%>%mutate(position=-p_offset,site='p_site')%>%select(nreadlen,position,site),
     kl_offsets%>%mutate(position=-p_offset-3,site='a_site')%>%select(nreadlen,position,site),
     kl_offsets%>%mutate(position=-p_offset-6,site='a_p3_site')%>%select(nreadlen,position,site)
   )
-  posseldf%>%filter(site=='e_site')
   #
-  allcodondt = frustprofilelist%>%
-    group_by(sample,nreadlen,position)%>%
-    mutate(ro_cl = ro_cl/sum(ro_cl), re_c = re_c/sum(re_c))%>%
+  allcodondt = metacodondf%>%
     inner_join(posseldf, by=c('position','nreadlen'))%>%
-    ungroup%>%
-    select(-re_c,-count,-position)%>%
-    dplyr::rename('RUST_score'='ro_cl')%>%
+    group_by(sample,site,codon)%>%
+    summarise(rust = sum(ro_cl)/sum(re_c))%>%
+    dplyr::rename('RUST_score'='rust')%>%
     tidyr::pivot_wider(names_from='site',values_from='RUST_score')
    #
   allcodondt

@@ -1,28 +1,19 @@
-#' Estimate per codon occupancies
+#' Generate a data frame of orf_id,position,codon
 #'
-#' Uses sampled RPF coverage gr object, offsets data frame, and an annotation
-#' object
-#' to get estimates of per-codon occupancy (which should be proportional to
-#' dwell times)
 #' @keywords Ribostan
 #' @author Dermot Harnett, \email{dermot.p.harnett@gmail.com}
 #'
-#' @param ribocovtrs - the ORFs to get sequence data for
-#' @param offsets_df - a data frame with numeric columns readlen,phase,offset
+#' @param orfnames - the ORFs to get sequence data for
 #' @param anno - an annotation object
 #' @return returns a data frame with columns orf_id, pos, codon
-#'
-#' @details 
 
-get_codposdf <- function(ribocovtrs, anno, fafile) {
-  #
-  fafileob <- Rsamtools::FaFile(fafile)
+get_codposdf <- function(orfnames, anno) {
   #
   cdsgrl <- anno$cdsgrl
   #
-  bestcdsseq <- cdsgrl[ribocovtrs] %>%
+  bestcdsseq <- cdsgrl[orfnames] %>%
     sort_grl_st() %>%
-    GenomicFeatures::extractTranscriptSeqs(x = fafileob, .)
+    GenomicFeatures::extractTranscriptSeqs(x = anno$fafileob, .)
   #
   codposdf <- lapply(bestcdsseq, function(cdsseq) {
     codonmat <- codons(cdsseq) %>%
@@ -36,6 +27,20 @@ get_codposdf <- function(ribocovtrs, anno, fafile) {
   codposdf
 }
 
+#' Generate a fake dataset of p-sites
+#'
+#' This function useful for testing, generates a fake set of psites
+#' given an annotation, 
+#' object
+#' to get estimates of per-codon occupancy (which should be proportional to
+#' dwell times)
+#' @keywords Ribostan
+#' @author Dermot Harnett, \email{dermot.p.harnett@gmail.com}
+#'
+#' @param orfnames - the ORFs to get sequence data for
+#' @param offsets_df - a data frame with numeric columns readlen,phase,offset
+#' @param anno - an annotation object
+#' @return returns a data frame with columns orf_id, pos, codon
 
 
 #' get a coverage RleList of psite coverage over a set of ORFs
@@ -83,17 +88,16 @@ get_psitecov <- function(rpfs, offsets_df, anno) {
 #'
 #' @param psite_cov - a data frame of RPF footprints
 #' @param anno - an annotation object
-#' @param fafile - genomic fasta file
 #' @return 	a data frame with columns orf_id, p_codon, a_codon, count
 
-get_sitedf <- function(psite_cov, anno, fafile) {
+get_sitedf <- function(psite_cov, anno) {
   #
   sitedf <- psite_cov %>%
     lapply(. %>% matrix(nrow = 3) %>% colSums()) %>%
     stack() 
   colnames(sitedf) <- c("count", "orf_id")
   #
-  codposdf <- get_codposdf(names(psite_cov), anno, fafile)
+  codposdf <- get_codposdf(names(psite_cov), anno)
   #
   stopifnot(
     all(unique(codposdf$orf_id) == unique(sitedf$orf_id))
@@ -111,7 +115,7 @@ get_sitedf <- function(psite_cov, anno, fafile) {
 #'
 #' Uses sampled RPF coverage gr object, offsets data frame, and an annotation
 #' object
-#' to get estimates of per-codon occupancy (which should be proportional to
+#' to get estimates of per-codon occupancy (which are proportional to
 #' dwell times)
 #' @keywords Ribostan
 #' @author Dermot Harnett, \email{dermot.p.harnett@gmail.com}
@@ -125,7 +129,13 @@ get_sitedf <- function(psite_cov, anno, fafile) {
 #' defaults to RUST
 #' @return 	a data frame with columns codon,position,estimate,upper,lower,
 #' p.value
-#'
+#' @examples
+#' data(chr22_anno)
+#' data(rpfs)
+#' data(offsets_df)
+#' psites <- get_psite_gr(rpfs, offsets_df, chr22_anno)
+#' rust_codon_occ_df <- get_codon_occs(psites, offsets_df, chr22_anno,
+#'  n_genes=1000, method='RUST')
 #' @export
 
 get_codon_occs <- function(psites, offsets_df,
@@ -140,13 +150,13 @@ get_codon_occs <- function(psites, offsets_df,
     subset(orf%in%toporfs)%>%
     {
       x <- .
-      out <-GenomicFeatures::mapToTranscripts(.,unq_orfs,ignore.strand=T)
+      out <-GenomicFeatures::mapToTranscripts(.,unq_orfs,ignore.strand=TRUE)
       out <- out[x$orf[out$xHits]==names(unq_orfs)[out$transcriptsHits]]
       coverage(out)
     }
   psitecov <- psitecov[toporfs]
   #
-  sitedf <- get_sitedf(psitecov, anno, fafile)
+  sitedf <- get_sitedf(psitecov, anno)
   #
   sitedf <- sitedf %>% group_by(orf_id) %>% 
     mutate(trmean = mean(count))
@@ -224,20 +234,30 @@ get_codon_occs <- function(psites, offsets_df,
 #' @author Dermot Harnett, \email{dermot.p.harnett@gmail.com}
 #'
 #' @param anno - an annotation object
-#' @param fafile - a fasta file with sequence for that anno object
 #' @param codon_model - a dwell-time data frame with columns position, codon,
 #' estimate
-#' @return a data frame with columns orf_id, sum_occ
+#' @return a data frame with columns orf_id, mean_occ
 #'
 #' @details Use estimates of per codon dwell time to get the mean dwell time
-#' over transcrips
+#' @examples
+#' 
+#'
+#'  data(chr22_anno)
+#' data(rpfs)
+#' data(offsets_df)
+#' psites <- get_psite_gr(rpfs, offsets_df, chr22_anno)
+#' rust_codon_occ_df <- get_codon_occs(psites, offsets_df, chr22_anno,
+#'  n_genes=1000, method='RUST')
+#' orf_elong = get_orf_elong(chr22_anno, rust_codon_occ_df)
+#' gn_elong = gene_level_elong(orf_elong, ritpms, anno)
 
-# TODO - update this to be more fleixible in what a codon model is
-get_predicted_codon_occs <- function(anno, fafile, codon_model) {
+
+get_orf_elong <- function(anno, codon_model) {
   #
   cdsgrl <- anno$cdsgrl
   #
-  fafileob <- Rsamtools::FaFile(fafile)
+  fafileob <- anno$fafileob
+  Rsamtools::indexFa(fafileob$path)
   #
   elong_orfs <- names(cdsgrl)
   trsplit <- elong_orfs %>% split(floor(seq_along(.) / 1000))
@@ -254,8 +274,10 @@ get_predicted_codon_occs <- function(anno, fafile, codon_model) {
         . <- . / rowSums(.)
         .
       } %>%
-      as.data.frame() %>%
-      rownames_to_column("orf_id") %>%
+      as.data.frame()
+    codonfreqdf$orf_id <- rownames(codonfreqdf) 
+    rownames(codonfreqdf) <- NULL
+    codonfreqdf <- codonfreqdf %>%
       tidyr::pivot_longer(-orf_id, names_to = "codon", values_to = "freq")
 
     ipos <- "a_codon"
@@ -268,13 +290,13 @@ get_predicted_codon_occs <- function(anno, fafile, codon_model) {
           by = "codon"
         ) %>%
         group_by(orf_id) %>%
-        summarise(estimate = weighted.mean(estimate, freq, na.rm = T))
+        summarise(estimate = weighted.mean(estimate, freq, na.rm = TRUE))
       poselong
     })
     tr_elong <- poselongs %>%
       Reduce(f=function(x,y)left_join(x, y, by = "orf_id")) %>%
       {
-        data.frame(orf_id = .[[1]], sum_occ = rowSums(.[, -1]))
+        data.frame(orf_id = .[[1]], mean_occ = rowMeans(.[, -1]))
       }
     tr_elong
   })
@@ -288,11 +310,11 @@ get_predicted_codon_occs <- function(anno, fafile, codon_model) {
 #' @author Dermot Harnett, \email{dermot.p.harnett@gmail.com}
 #'
 #' @param tr_elong elongation rates per transcript, data frame with columns
-#' orf_id, sum_occ
+#' orf_id, mean_occ
 #' @param ritpms a named vector of ritpms per transcript
 #' @param anno an annotation object
 #' @param exclude_uORFs exclude uORFs from the gene level total;Defaults to TRUE
-#' @return a data frame with columns sum_occ and gene_id
+#' @return a data frame with columns mean_occ and gene_id
 #'
 #' @details This function aggregates transript level ritpms to gene level,with
 #' the mean elongation rate over all the
@@ -313,10 +335,10 @@ gene_level_elong <- function(tr_elong, ritpms, anno, exclude_uORFs=TRUE) {
     left_join(tibble::enframe(ritpms, "orf_id", "ritpm"), 
               by = "orf_id") %>%
     ungroup() %>%
-    mutate(ritpm = replace_na(ritpm, min(ritpm, na.rm = T) * 0.01)) %>%
+    mutate(ritpm = replace_na(ritpm, min(ritpm, na.rm = TRUE) * 0.01)) %>%
     group_by(gene_id) %>%
-    summarise(sum_occ = weighted.mean(sum_occ, ritpm, na.rm = T))
+    summarise(mean_occ = weighted.mean(mean_occ, ritpm, na.rm = TRUE))
   gn_elong %>%
     ungroup() %>%
-    select(gene_id, sum_occ)
+    select(gene_id, mean_occ)
 }
