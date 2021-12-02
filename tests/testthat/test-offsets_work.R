@@ -3,5 +3,5 @@ test_that("finding offsets works", {
   data(rpfs)
   data(offsets_df)
   testoffsets_df <- get_offsets(rpfs, chr22_anno)
-  expect_identical(offsets_df,testoffsets_df)
+  expect_identical(offsets_df, testoffsets_df)
 })

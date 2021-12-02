@@ -20,7 +20,6 @@ id <- function(cov) BiocGenerics::match(cov, unique(cov))
 # TODO update this so it works with uORFs
 
 addphase <- function(gr, cdsstarts) {
-
   cdsstarts <- cdsstarts[as.vector(seqnames(gr))]
   gr$phase <- unlist((start(gr) - cdsstarts) %% 3)
   gr
@@ -48,9 +47,9 @@ get_readlens <- function(readlens) {
     {
       . / max(.)
     } %>%
-    Filter(f=function(x)x > 0.025) %>%
+    Filter(f = function(x) x > 0.025) %>%
     {
-      Filter(f=function(x)  1 - x > 0.025,.)
+      Filter(f = function(x) 1 - x > 0.025, .)
     } %>%
     names() %>%
     as.numeric()
@@ -84,12 +83,14 @@ read_ribobam <- function(ribobam, which, strip_seqnames = TRUE) {
     isUnmappedQuery = FALSE,
     isMinusStrand = FALSE
   )
-  bparam <- Rsamtools::ScanBamParam(simpleCigar = TRUE,flags )
+  bparam <- Rsamtools::ScanBamParam(simpleCigar = TRUE, flags)
   ribogr <- GenomicAlignments::readGAlignments(
-    ribobam, use.names = TRUE, param = bparam)
+    ribobam,
+    use.names = TRUE, param = bparam
+  )
   #
   readlens <- get_readlens(GenomicAlignments::qwidth(ribogr))
-  wfilt <- GenomicAlignments::qwidth(ribogr) <= max(readlens) & 
+  wfilt <- GenomicAlignments::qwidth(ribogr) <= max(readlens) &
     (min(readlens) <= GenomicAlignments::qwidth(ribogr))
   ribogr <- ribogr[wfilt]
   # this is the number get_bamdf gets in py 4628644
@@ -126,9 +127,11 @@ read_ribobam <- function(ribobam, which, strip_seqnames = TRUE) {
 
 get_cds_reads <- function(cov, anno) {
   trspacecds <- anno$trspacecds
-  
+
   # load genomic or transcriptomic bam
-  genomicbam = seqnames(cov) %>% head(1) %>% str_detect("chr")
+  genomicbam <- seqnames(cov) %>%
+    head(1) %>%
+    str_detect("chr")
   if (genomicbam) {
     cov <- cov %>%
       resize(1) %>%
@@ -144,7 +147,7 @@ get_cds_reads <- function(cov, anno) {
   }
 
   sharedseqnames <- unique(seqnames(trspacecds)) %>%
-    unlist%>%
+    unlist() %>%
     intersect(unique(seqnames(cov)))
   cov <- cov %>% keepSeqlevels(sharedseqnames, pruning = "coarse")
   seqlevels(cov) <- seqlevels(trspacecds)
@@ -165,7 +168,7 @@ get_cds_reads <- function(cov, anno) {
 #' @param gr2 - granges object
 #' @return gr1 but with expanded seqinfo
 
-mergeseqlevels <- function(gr1,gr2){
+mergeseqlevels <- function(gr1, gr2) {
   unseqs <- union(seqlevels(gr1), seqlevels(gr2))
   shared <- intersect(seqlevels(gr1), seqlevels(gr2))
   s1unique <- setdiff(seqlevels(gr1), shared)
@@ -176,7 +179,7 @@ mergeseqlevels <- function(gr1,gr2){
     as.data.frame(seqinfo(gr1)[s1unique]),
     as.data.frame(seqinfo(gr2))
   )
-  mergeseqinfo <- as(mergeseqinfo, 'Seqinfo')
+  mergeseqinfo <- as(mergeseqinfo, "Seqinfo")
   seqlevels(gr1) <- seqlevels(mergeseqinfo)
   seqinfo(gr1) <- mergeseqinfo
   gr1
@@ -185,7 +188,7 @@ mergeseqlevels <- function(gr1,gr2){
 
 #' convert a granges object of footprints to a psites object
 #'
-#' This function applies offsets to RPF data, attributing to each RPF 
+#' This function applies offsets to RPF data, attributing to each RPF
 #' an offset specific a readlength and phase. Where phase is ambigous,
 #' because more than one ORF overlaps the RPF, the RPF has both offsets
 #' applied, and in rare cases where more than one possible psite location
@@ -198,7 +201,7 @@ mergeseqlevels <- function(gr1,gr2){
 #' @param offsets_df - a data frame with numeric columns readlen,phase,offset
 #' @param anno - an annotation object with at least one ORF per transcript,
 #' the function uses the 'uORF' slot if it's available
-#' @return a GRanges object of width-1 psites with columns readlen, 
+#' @return a GRanges object of width-1 psites with columns readlen,
 #' phase and offset
 #' @examples
 #' data(chr22_anno)
@@ -212,75 +215,84 @@ get_psite_gr <- function(rpfs, offsets_df, anno) {
   rpfs <- mergeseqlevels(rpfs, orfs)
   orfs <- mergeseqlevels(orfs, rpfs)
   #
-  orfov_ind <- findOverlaps(rpfs,orfs, select='first', ignore.strand=TRUE)
+  orfov_ind <- findOverlaps(rpfs, orfs, select = "first", ignore.strand = TRUE)
   rpfs$orf <- Rle(names(orfs)[orfov_ind])
   rpfs$phase <- start(rpfs) - start(orfs)[orfov_ind]
-  rpfs$phase <- rpfs$phase%%3
+  rpfs$phase <- rpfs$phase %% 3
   #
-  #now get offsets for all
-  offsetcols <- c('readlen', 'phase', 'p_offset')
-  rpfs$p_offset <- rpfs%>%{
-        as.data.frame(mcols(.)[, c("readlen", "phase")])
-      } %>%
-      left_join(
-        offsets_df %>% select(one_of(offsetcols)),
-        by = c("readlen", "phase")
-      ) %>%
-      .$p_offset
-  rpfs <- rpfs%>%subset(!is.na(p_offset))
-  orfov <- countOverlaps(rpfs,orfs, ignore.strand=TRUE)
-  is_mov_rpf <- orfov>1
-  #get phase for multi orf alignments
+  # now get offsets for all
+  offsetcols <- c("readlen", "phase", "p_offset")
+  rpfs$p_offset <- rpfs %>%
+    {
+      as.data.frame(mcols(.)[, c("readlen", "phase")])
+    } %>%
+    left_join(
+      offsets_df %>% select(one_of(offsetcols)),
+      by = c("readlen", "phase")
+    ) %>%
+    .$p_offset
+  rpfs <- rpfs %>% subset(!is.na(p_offset))
+  orfov <- countOverlaps(rpfs, orfs, ignore.strand = TRUE)
+  is_mov_rpf <- orfov > 1
+  # get phase for multi orf alignments
   mov_rpfs <- rpfs[is_mov_rpf]
   mov_rpfs_ov <- orfov[is_mov_rpf]
-  mov_rpfs_ind <- findOverlaps(mov_rpfs,orfs, ignore.strand=TRUE)
+  mov_rpfs_ind <- findOverlaps(mov_rpfs, orfs, ignore.strand = TRUE)
   mov_rpfs <- rep(mov_rpfs, mov_rpfs_ov)
   mov_rpfs$orf <- names(orfs)[subjectHits(mov_rpfs_ind)]
   mov_rpfs$phase <- start(mov_rpfs) - start(orfs)[subjectHits(mov_rpfs_ind)]
-  mov_rpfs$phase <- mov_rpfs$phase %%3
-  #get offsets for our multi orf alignments
-  mov_rpfs$p_offset <- mov_rpfs%>%{
-        as.data.frame(mcols(.)[, c("readlen", "phase")])
-      } %>%
-      left_join(
-        offsets_df %>% select(one_of(offsetcols)),
-        by = c("readlen", "phase")
-      ) %>%
-      .$p_offset
+  mov_rpfs$phase <- mov_rpfs$phase %% 3
+  # get offsets for our multi orf alignments
+  mov_rpfs$p_offset <- mov_rpfs %>%
+    {
+      as.data.frame(mcols(.)[, c("readlen", "phase")])
+    } %>%
+    left_join(
+      offsets_df %>% select(one_of(offsetcols)),
+      by = c("readlen", "phase")
+    ) %>%
+    .$p_offset
   #
-  #for the remaining ambigous ones choose randomly
-  uniq_mov_rpfs<-mov_rpfs%>%
-    resize(1, 'start')%>%
-    shift(.$p_offset)%>%
-    subsetByOverlaps(orfs)%>%
-    sample%>%
-    {.[match(unique(names(.)),names(.))]}%>%
-    .[order(as.numeric(names(.)))]%>%
-    shift(-.$p_offset)%>%
-    sort
-  #add in phase to the ambiguous ones
-  uniq_mov_rpfs$p_offset<-NULL
-  rpfs[names(uniq_mov_rpfs)]<-uniq_mov_rpfs
+  # for the remaining ambigous ones choose randomly
+  uniq_mov_rpfs <- mov_rpfs %>%
+    resize(1, "start") %>%
+    shift(.$p_offset) %>%
+    subsetByOverlaps(orfs) %>%
+    sample() %>%
+    {
+      .[match(unique(names(.)), names(.))]
+    } %>%
+    .[order(as.numeric(names(.)))] %>%
+    shift(-.$p_offset) %>%
+    sort()
+  # add in phase to the ambiguous ones
+  uniq_mov_rpfs$p_offset <- NULL
+  rpfs[names(uniq_mov_rpfs)] <- uniq_mov_rpfs
 
-  psites <- rpfs%>%
-    subset(!is.na(p_offset))%>%
-    resize(1, 'start')%>%
-    shift(.,.$p_offset)
-  
-  #phaseshift the psites
+  psites <- rpfs %>%
+    subset(!is.na(p_offset)) %>%
+    resize(1, "start") %>%
+    shift(., .$p_offset)
 
-  rl_phs_ <- mcols(psites)[,c('phase','readlen')]%>%
-    as.data.frame%>%
-    group_by(phase,readlen)%>%tally
-  shiftdf <- rl_phs_%>%group_by(readlen)%>%
-    mutate(shft = rank(-n)-1)%>%as.data.frame
+  # phaseshift the psites
+
+  rl_phs_ <- mcols(psites)[, c("phase", "readlen")] %>%
+    as.data.frame() %>%
+    group_by(phase, readlen) %>%
+    tally()
+  shiftdf <- rl_phs_ %>%
+    group_by(readlen) %>%
+    mutate(shft = rank(-n) - 1) %>%
+    as.data.frame()
 
   phaseshifts <- merge(
-    mcols(psites)[,c('phase','readlen')],
-    shiftdf, all.x=TRUE)
+    mcols(psites)[, c("phase", "readlen")],
+    shiftdf,
+    all.x = TRUE
+  )
   #
-  psites <- psites%>%
-    GenomicRanges::shift(-.$phase)%>%
+  psites <- psites %>%
+    GenomicRanges::shift(-.$phase) %>%
     GenomicRanges::shift(phaseshifts$shft)
   psites
 }
@@ -297,7 +309,7 @@ get_psite_gr <- function(rpfs, offsets_df, anno) {
 #'
 #' @param ribobam GRanges; A bam file with RPFs
 #' @param anno An annotation object
-#' @param startstop option to select only reads that overlapt he start/stop 
+#' @param startstop option to select only reads that overlapt he start/stop
 #' for offset determination,Defaults to FALSE
 #' @param strip_seqnames  whether the function should remove all text after the
 #' first '|', useful if aligning to gencode fastas Defaults to \code{TRUE}
@@ -312,30 +324,32 @@ get_psite_gr <- function(rpfs, offsets_df, anno) {
 #' @seealso \code{\link{get_cds_reads}}, \code{\link{get_readlens}}
 #' @examples
 #' data(chr22_anno)
-#' testbam <- system.file('extdata', 'chr22.bam', package='Ribostan', mustWork=TRUE)
+#' testbam <- system.file("extdata", "chr22.bam", package = "Ribostan", mustWork = TRUE)
 #' rpfs <- get_readgr(testbam, chr22_anno)
 #' @export
 
-get_readgr <- function(ribobam, anno, offsets_df=NULL, startstop=FALSE, strip_seqnames = TRUE) {
+get_readgr <- function(ribobam, anno, offsets_df = NULL, startstop = FALSE, strip_seqnames = TRUE) {
   bamseqnames <- seqinfo(Rsamtools::BamFile(ribobam))@seqnames
   if (strip_seqnames) bamseqnames <- str_replace(bamseqnames, "\\|.*", "")
-    orf_trs <- unlist(unique(seqnames(anno$trspacecds)))
+  orf_trs <- unlist(unique(seqnames(anno$trspacecds)))
   stopifnot(
     mean(orf_trs %in% bamseqnames) > .5
   )
-  if(startstop){
-    seltrs = intersect(names(anno$trspacecds),bamseqnames)
-    which <- c(anno$trspacecds[seltrs]%>%resize(1, 'start'),
-      anno$trspacecds[seltrs]%>%resize(1, 'end'))
-    strand(which)<-'+'
-  }else{
-    which<-NULL
+  if (startstop) {
+    seltrs <- intersect(names(anno$trspacecds), bamseqnames)
+    which <- c(
+      anno$trspacecds[seltrs] %>% resize(1, "start"),
+      anno$trspacecds[seltrs] %>% resize(1, "end")
+    )
+    strand(which) <- "+"
+  } else {
+    which <- NULL
   }
   cov <- read_ribobam(ribobam, which)
-  if(!is.null(offsets_df)){
+  if (!is.null(offsets_df)) {
     cov <- gRsamtools::et_psite_gr(cov, offsets_df, anno)
-  }else{
-    cov <- get_cds_reads(cov, anno)    
+  } else {
+    cov <- get_cds_reads(cov, anno)
   }
   cov
 }
@@ -349,7 +363,7 @@ get_readgr <- function(ribobam, anno, offsets_df=NULL, startstop=FALSE, strip_se
 #' @return A matrix of the infile
 
 get_read_spmat <- function(cov, anno) {
-  stopifnot(length(cov)>0) 
+  stopifnot(length(cov) > 0)
   orfs <- c(anno$trspacecds)
   #
   cov <- mergeseqlevels(cov, orfs)
@@ -357,12 +371,12 @@ get_read_spmat <- function(cov, anno) {
   orfs <- subsetByOverlaps(orfs, cov)
   #
   spmat <- Matrix::sparseMatrix(
-    i = names(cov)%>%id,
-    j = cov$orf%>%id,
+    i = names(cov) %>% id(),
+    j = cov$orf %>% id(),
     x = 1
   )
-  colnames(spmat) <- cov$orf%>%unique
-  rownames(spmat) <- names(cov)%>%unique
+  colnames(spmat) <- cov$orf %>% unique()
+  rownames(spmat) <- names(cov) %>% unique()
   spmat <- spmat / Matrix::rowSums(spmat)
   spmat
 }
@@ -381,7 +395,7 @@ get_read_spmat <- function(cov, anno) {
 #' Defaults to FALSE
 #' @return A matrix of the infile
 
-optimize_ritpms <- function(spmat, anno, iternum = 500, verbose=FALSE) {
+optimize_ritpms <- function(spmat, anno, iternum = 500, verbose = FALSE) {
   trlens <- anno$trspacecds %>%
     width() %>%
     unlist() %>%
@@ -502,21 +516,21 @@ sample_cols_spmat <- function(spmat, return_mat = TRUE) {
 #' @param anno An annotation object with a gene-transcript table
 #' @return a vector of normalized footprint densities
 #' @examples
-#'  data(chr22_anno)
+#' data(chr22_anno)
 #' data(rpfs)
 #' data(offsets_df)
 #' data(ms_df)
-  
+#'
 #' psites <- get_psite_gr(rpfs, offsets_df, chr22_anno)
-#' #now, use Stan to estimate normalized p-site densities for our data
+#' # now, use Stan to estimate normalized p-site densities for our data
 #' ritpms <- get_ritpms(psites, chr22_anno)
 #' @export
 
 get_ritpms <- function(cov, anno) {
-  #quantify_orfs
+  # quantify_orfs
   spmat <- get_read_spmat(cov, anno)
   #
-  ritpm_opt <- optimize_ritpms(spmat, anno, iternum=100)
+  ritpm_opt <- optimize_ritpms(spmat, anno, iternum = 100)
   #
   if (ritpm_opt$par %>% names() %>% str_detect("^ritpm\\[\\d+\\]$") %>% any()) {
     ritpmpars <- ritpm_opt$par %>%
@@ -556,7 +570,7 @@ sample_cov_gr <- function(cov, anno, ritpms) {
 
   #
   iddf <- tibble(
-    rind = seq_along(cov), 
+    rind = seq_along(cov),
     j = names(cov) %>% id(),
     i = as.numeric(id(cov$orf))
   )
@@ -587,17 +601,17 @@ sample_cov_gr <- function(cov, anno, ritpms) {
 #' data(rpfs)
 #' data(offsets_df)
 #' data(ms_df)
-  
+#'
 #' psites <- get_psite_gr(rpfs, offsets_df, chr22_anno)
-#' #now, use Stan to estimate normalized p-site densities for our data
+#' # now, use Stan to estimate normalized p-site densities for our data
 #' ritpms <- get_ritpms(psites, chr22_anno)
-#' #and get these at the gene level (ignoring uORFs)
-#' gritpms = gene_level_expr(ritpms, chr22_anno)
+#' # and get these at the gene level (ignoring uORFs)
+#' gritpms <- gene_level_expr(ritpms, chr22_anno)
 #' @export
 
 gene_level_expr <- function(ripms, anno) {
   trgiddf <- anno$trgiddf
-  trgiddf <- trgiddf%>%subset(!uORF)
+  trgiddf <- trgiddf %>% subset(!uORF)
   #
   gn_expr <- left_join(
     trgiddf,
@@ -605,7 +619,8 @@ gene_level_expr <- function(ripms, anno) {
     by = "orf_id"
   )
   #
-  gn_expr <- gn_expr %>% group_by(gene_id) %>%
+  gn_expr <- gn_expr %>%
+    group_by(gene_id) %>%
     summarise(expr = sum(replace_na(ritpm, 0)))
   gn_expr %>% select(gene_id, expr)
 }
@@ -623,8 +638,7 @@ gene_level_expr <- function(ripms, anno) {
 #'
 #' @details The Ribosome densities are saved in salmon format
 #' @export
-#' @examples 
-
+#' @examples
 get_exprfile <- function(ribobam, ribofasta, outfile) {
   #
   anno <- get_ribofasta_anno(ribofasta)
@@ -633,11 +647,11 @@ get_exprfile <- function(ribobam, ribofasta, outfile) {
   #
   spmat <- get_read_spmat(rpfs, anno)
   rpfs <- get_readgr(testbam, chr22_anno)
-  #determine offsets by maximum CDS occupancy
+  # determine offsets by maximum CDS occupancy
   offsets_df <- get_offsets(rpfs, chr22_anno)
-  #use our offsets to determine p-site locations
+  # use our offsets to determine p-site locations
   psites <- get_psite_gr(rpfs, offsets_df, chr22_anno)
-  #now, use Stan to estimate normalized p-site densities for our data
+  # now, use Stan to estimate normalized p-site densities for our data
   ritpms <- get_ritpms(psites, chr22_anno)
   #
   n_reads <- n_distinct(names(rpfs))

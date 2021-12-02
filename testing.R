@@ -44,7 +44,7 @@ txdb <- GenomicFeatures::makeTxDbFromGFF(gtf)
 
 library(GenomicFeatures)
 
-fiveutrs = fiveUTRsByTranscript(txdb, use.names=T)
+fiveutrs = fiveUTRsByTranscript(txdb, use.names=TRUE)
 alluORFs <- findUORFs(fiveutrs, fafile)
 
 

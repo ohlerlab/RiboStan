@@ -23,14 +23,14 @@ get_codposdf <- function(orfnames, anno) {
       identity()
   })
   codposdf <- bind_rows(codposdf, .id = "orf_id")
-  colnames(codposdf) <- c('orf_id','pos','codon')
+  colnames(codposdf) <- c("orf_id", "pos", "codon")
   codposdf
 }
 
 #' Generate a fake dataset of p-sites
 #'
 #' This function useful for testing, generates a fake set of psites
-#' given an annotation, 
+#' given an annotation,
 #' object
 #' to get estimates of per-codon occupancy (which should be proportional to
 #' dwell times)
@@ -57,7 +57,7 @@ get_codposdf <- function(orfnames, anno) {
 
 # TODO make sure this can handle uORFs, dORFs.
 get_psitecov <- function(rpfs, offsets_df, anno) {
-  offsetcols <- c('readlen', 'phase', 'p_offset')
+  offsetcols <- c("readlen", "phase", "p_offset")
   p_offsets <- rpfs %>%
     # subset(readlen %in% offsets_df$readlen)%>%
     addphase(anno$cdsstarts) %>%
@@ -70,7 +70,7 @@ get_psitecov <- function(rpfs, offsets_df, anno) {
     ) %>%
     .$p_offset
   #
-  p_off_na = is.na(p_offsets)
+  p_off_na <- is.na(p_offsets)
   psitecov <- rpfs[!p_off_na] %>%
     resize(1, "start") %>%
     GenomicRanges::shift(p_offsets[!p_off_na]) %>%
@@ -94,7 +94,7 @@ get_sitedf <- function(psite_cov, anno) {
   #
   sitedf <- psite_cov %>%
     lapply(. %>% matrix(nrow = 3) %>% colSums()) %>%
-    stack() 
+    stack()
   colnames(sitedf) <- c("count", "orf_id")
   #
   codposdf <- get_codposdf(names(psite_cov), anno)
@@ -135,7 +135,8 @@ get_sitedf <- function(psite_cov, anno) {
 #' data(offsets_df)
 #' psites <- get_psite_gr(rpfs, offsets_df, chr22_anno)
 #' rust_codon_occ_df <- get_codon_occs(psites, offsets_df, chr22_anno,
-#'  n_genes=1000, method='RUST')
+#'   n_genes = 1000, method = "RUST"
+#' )
 #' @export
 
 get_codon_occs <- function(psites, offsets_df,
@@ -143,22 +144,28 @@ get_codon_occs <- function(psites, offsets_df,
   #
   # allpsitecov <- get_psitecov(psites, offsets_df, anno)
   #
-  highcov <- psites$orf%>%table%>%.[.>10]
-  toporfs <- highcov %>% sort %>% tail(n_genes)%>%names
+  highcov <- psites$orf %>%
+    table() %>%
+    .[. > 10]
+  toporfs <- highcov %>%
+    sort() %>%
+    tail(n_genes) %>%
+    names()
   unq_orfs <- anno$trspacecds[toporfs]
-  psitecov<-psites%>%
-    subset(orf%in%toporfs)%>%
+  psitecov <- psites %>%
+    subset(orf %in% toporfs) %>%
     {
       x <- .
-      out <-GenomicFeatures::mapToTranscripts(.,unq_orfs,ignore.strand=TRUE)
-      out <- out[x$orf[out$xHits]==names(unq_orfs)[out$transcriptsHits]]
+      out <- GenomicFeatures::mapToTranscripts(., unq_orfs, ignore.strand = TRUE)
+      out <- out[x$orf[out$xHits] == names(unq_orfs)[out$transcriptsHits]]
       coverage(out)
     }
   psitecov <- psitecov[toporfs]
   #
   sitedf <- get_sitedf(psitecov, anno)
   #
-  sitedf <- sitedf %>% group_by(orf_id) %>% 
+  sitedf <- sitedf %>%
+    group_by(orf_id) %>%
     mutate(trmean = mean(count))
   sitedf <- sitedf %>% filter(trmean != 0)
   #
@@ -179,7 +186,7 @@ get_codon_occs <- function(psites, offsets_df,
     # 	mutate(comp=codonstrengths[codon])%>%
     # 	{txtplot(.$comp,exp(.$estimate))}
   } else if (method == "RUST_glm") {
-    sitedf <- sitedf%>% mutate(rust = count > trmean, rtrmean = mean(rust))
+    sitedf <- sitedf %>% mutate(rust = count > trmean, rtrmean = mean(rust))
     rustfit <- glm(
       data = sitedf,
       formula = rust ~ 0 + offset(log(rtrmean)) + p_codon + a_codon,
@@ -192,7 +199,7 @@ get_codon_occs <- function(psites, offsets_df,
       mutate(lower = estimate - 1.96 * std.error) %>%
       mutate(upper = estimate + 1.96 * std.error)
   } else if (method == "RUST") {
-    sitedf <- sitedf%>% mutate(rust = count > trmean, rtrmean = mean(rust))
+    sitedf <- sitedf %>% mutate(rust = count > trmean, rtrmean = mean(rust))
     p_ests <- sitedf %>%
       group_by(p_codon) %>%
       summarise(estimate = sum(rust) / sum(trmean)) %>%
@@ -204,7 +211,7 @@ get_codon_occs <- function(psites, offsets_df,
       setNames(c("codon", "estimate")) %>%
       mutate(position = "a_codon")
     codon_occ_df <- bind_rows(p_ests, a_ests)
-    codon_occ_df <- codon_occ_df%>% mutate(upper = NA, lower = NA, p.value = NA)
+    codon_occ_df <- codon_occ_df %>% mutate(upper = NA, lower = NA, p.value = NA)
     codon_occ_df
   } else {
     p_ests <- sitedf %>%
@@ -240,18 +247,17 @@ get_codon_occs <- function(psites, offsets_df,
 #'
 #' @details Use estimates of per codon dwell time to get the mean dwell time
 #' @examples
-#' 
 #'
-#'  data(chr22_anno)
+#'
+#' data(chr22_anno)
 #' data(rpfs)
 #' data(offsets_df)
 #' psites <- get_psite_gr(rpfs, offsets_df, chr22_anno)
 #' rust_codon_occ_df <- get_codon_occs(psites, offsets_df, chr22_anno,
-#'  n_genes=1000, method='RUST')
-#' orf_elong = get_orf_elong(chr22_anno, rust_codon_occ_df)
-#' gn_elong = gene_level_elong(orf_elong, ritpms, anno)
-
-
+#'   n_genes = 1000, method = "RUST"
+#' )
+#' orf_elong <- get_orf_elong(chr22_anno, rust_codon_occ_df)
+#' gn_elong <- gene_level_elong(orf_elong, ritpms, anno)
 get_orf_elong <- function(anno, codon_model) {
   #
   cdsgrl <- anno$cdsgrl
@@ -269,13 +275,16 @@ get_orf_elong <- function(anno, codon_model) {
 
     codonfreqdf <- bestcdsseq %>%
       oligonucleotideFrequency(3, step = 3) %>%
-      {rownames(.)<-(names(bestcdsseq));.} %>%
+      {
+        rownames(.) <- (names(bestcdsseq))
+        .
+      } %>%
       {
         . <- . / rowSums(.)
         .
       } %>%
       as.data.frame()
-    codonfreqdf$orf_id <- rownames(codonfreqdf) 
+    codonfreqdf$orf_id <- rownames(codonfreqdf)
     rownames(codonfreqdf) <- NULL
     codonfreqdf <- codonfreqdf %>%
       tidyr::pivot_longer(-orf_id, names_to = "codon", values_to = "freq")
@@ -294,7 +303,7 @@ get_orf_elong <- function(anno, codon_model) {
       poselong
     })
     tr_elong <- poselongs %>%
-      Reduce(f=function(x,y)left_join(x, y, by = "orf_id")) %>%
+      Reduce(f = function(x, y) left_join(x, y, by = "orf_id")) %>%
       {
         data.frame(orf_id = .[[1]], mean_occ = rowMeans(.[, -1]))
       }
@@ -322,18 +331,21 @@ get_orf_elong <- function(anno, codon_model) {
 #' @seealso \code{\link{get_cds_reads}}, \code{\link{get_readlens}}
 
 
-gene_level_elong <- function(tr_elong, ritpms, anno, exclude_uORFs=TRUE) {
+gene_level_elong <- function(tr_elong, ritpms, anno, exclude_uORFs = TRUE) {
   trgiddf <- anno$trgiddf
-  if(exclude_uORFs){
-    non_uORFs <- trgiddf%>%subset(!uORF)%>%.$orf_id
-    tr_elong <- tr_elong%>%subset(orf_id%in%non_uORFs)
+  if (exclude_uORFs) {
+    non_uORFs <- trgiddf %>%
+      subset(!uORF) %>%
+      .$orf_id
+    tr_elong <- tr_elong %>% subset(orf_id %in% non_uORFs)
   }
   #
   gn_elong <- tr_elong %>%
-    left_join(trgiddf, by = "orf_id")%>%
+    left_join(trgiddf, by = "orf_id") %>%
     group_by(gene_id) %>%
-    left_join(tibble::enframe(ritpms, "orf_id", "ritpm"), 
-              by = "orf_id") %>%
+    left_join(tibble::enframe(ritpms, "orf_id", "ritpm"),
+      by = "orf_id"
+    ) %>%
     ungroup() %>%
     mutate(ritpm = replace_na(ritpm, min(ritpm, na.rm = TRUE) * 0.01)) %>%
     group_by(gene_id) %>%

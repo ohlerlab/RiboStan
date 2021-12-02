@@ -12,8 +12,8 @@
 
 
 add_cor_offset <- function(rpfs, anno) {
-  cdsstarts <- anno$cdsstarts%>%unlist
-  cds_prestop_st <- anno$cds_prestop_st%>%unlist
+  cdsstarts <- anno$cdsstarts %>% unlist()
+  cds_prestop_st <- anno$cds_prestop_st %>% unlist()
 
   rpfs <- rpfs %>%
     as("GRanges") %>%
@@ -52,9 +52,7 @@ add_cor_offset <- function(rpfs, anno) {
 # TODO maybe also shortedn this by removing arguments?
 # TODO remove the hardcoded numbers
 
-get_incl_max_offsets <- function(rpfs, anno)
-
-{
+get_incl_max_offsets <- function(rpfs, anno) {
   stopifnot("readlen" %in% colnames(mcols(rpfs)))
   #
   rpfs <- rpfs %>% add_cor_offset(anno)
@@ -66,7 +64,7 @@ get_incl_max_offsets <- function(rpfs, anno)
     subset((startoffset < readlen - 5) & (startoffset > 5)) %>%
     mcols(.) %>%
     .[, c("startoffset", "score", "readlen", "phase")] %>%
-    as.data.frame() %>% 
+    as.data.frame() %>%
     group_by(phase, readlen, startoffset) %>%
     tally(wt = score) %>%
     arrange(startoffset) %>%
@@ -109,8 +107,9 @@ get_incl_max_offsets <- function(rpfs, anno)
     }) %>%
     bind_rows() %>%
     filter((p_offset %% 3) == 0)
-  netdf <- allpos %>% left_join(netdf, 
-    by = c("readlen", "p_offset", "phase"))
+  netdf <- allpos %>% left_join(netdf,
+    by = c("readlen", "p_offset", "phase")
+  )
   netdf <- netdf %>%
     mutate(net = replace_na(net, 0)) %>%
     mutate(twind = net + lag(net) + lead(net))
@@ -152,17 +151,17 @@ get_incl_max_offsets <- function(rpfs, anno)
 #' @examples
 #' data(chr22_anno)
 #' data(rpfs)
-#'  data(offsets_df)
-#'  testoffsets_df <- get_offsets(rpfs, chr22_anno)
-
+#' data(offsets_df)
+#' testoffsets_df <- get_offsets(rpfs, chr22_anno)
+#'
 # TODO Add reference to a-p-site paper
-#input = ribobam
+# input = ribobam
 get_offsets <- function(input, anno, method = "cds_incl") {
-  if(is.character(input)&(length(input)==1)){
-    message('loading footprint data')
+  if (is.character(input) & (length(input) == 1)) {
+    message("loading footprint data")
     rpfs <- get_readgr(input, anno)
-  }else{
-    stopifnot(is(input,'GRanges'))
+  } else {
+    stopifnot(is(input, "GRanges"))
     rpfs <- input
   }
   #
