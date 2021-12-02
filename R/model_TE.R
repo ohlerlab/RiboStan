@@ -116,7 +116,7 @@ get_sitedf <- function(psite_cov, anno, fafile) {
 #' @keywords Ribostan
 #' @author Dermot Harnett, \email{dermot.p.harnett@gmail.com}
 #'
-#' @param rpfs - a data frame of RPF footprints
+#' @param psites - a data frame of inferred RPF p-sites
 #' @param offsets_df - a data frame with numeric columns readlen,phase,offset
 #' @param anno - an annotation object
 #' @param n_genes - how many genes to use for the model - most highly expressed
@@ -128,15 +128,15 @@ get_sitedf <- function(psite_cov, anno, fafile) {
 #'
 #' @export
 
-get_codon_occs <- function(rpfs, offsets_df,
+get_codon_occs <- function(psites, offsets_df,
                            anno, n_genes = 1000, method = "linear") {
   #
-  # allpsitecov <- get_psitecov(rpfs, offsets_df, anno)
+  # allpsitecov <- get_psitecov(psites, offsets_df, anno)
   #
-  highcov <- rpfs$orf%>%table%>%.[.>10]
+  highcov <- psites$orf%>%table%>%.[.>10]
   toporfs <- highcov %>% sort %>% tail(n_genes)%>%names
   unq_orfs <- anno$trspacecds[toporfs]
-  psitecov<-rpfs%>%
+  psitecov<-psites%>%
     subset(orf%in%toporfs)%>%
     {
       x <- .

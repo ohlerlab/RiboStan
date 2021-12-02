@@ -3,15 +3,19 @@
 ################################################################################
 #' @import stringr
 #' @import readr
-#' @import magrittr
-#' @import purrr
+# #' @import magrittr
+# #' @import purrr
 #' @import dplyr
+#' @import ggplot2
+#' @import Biostrings
 #' @import BiocGenerics
+#' @importFrom GenomeInfoDb Seqinfo keepSeqlevels seqlevels seqlengths
+#' @importFrom Biostrings subseq codons oligonucleotideFrequency
 #' @import GenomicRanges
-#' @
 #' @importFrom tidyr replace_na
+#' @importFrom dplyr mutate select filter
 
-
+NULL
 
 
 
@@ -388,19 +392,23 @@ width1grs <- function(gr) {
 #' @keywords Ribostan
 #' @author Dermot Harnett, \email{dermot.p.harnett@gmail.com}
 #'
-#' @param filt_anno GRanges; an unfilted imported GTF
+#' @param gtf A GTF with gene annotation
 #' @param fafileob FaFile; a genomic Fasta file
 #' @param add_uorfs Whether to look for and include uORFs
 #' @details This takes only coding sequences which are a multiple of 3bp and
 #' have a start and a stop on either end. it always returns coding sequences
 #' without the stops, regardless of their extent in the input.
 #' @return a list containing annotation objects used by other functions.
+#' @export
+#' @examples
+#' download.file(paste0('https://ftp.ebi.ac.uk/pub/databases/gencode/',
+#'  'Gencode_human/release_19/gencode.v19.annotation.gtf.gz'))
+#' annotation <- filter_anno(gtf)
+#' 
 
-# TODO use a txdb object for this instead, simplify the object, maybe include
-# fasta with it.
-
-filter_anno <- function(anno, fafile, add_uorfs=TRUE,
+load_annotation <- function(gtf, fafile, add_uorfs=TRUE,
   ignore_orf_validity = FALSE) {
+  anno <- rtracklayer::import(gtf)
   fafileob <- Rsamtools::FaFile(fafile)
   Rsamtools::indexFa(fafile)
   seqinfo(anno) <- seqinfo(fafileob)[as.vector(seqlevels(anno))]

@@ -47,7 +47,6 @@ add_cor_offset <- function(rpfs, anno) {
 #' @param anno annotation object
 #'
 #' @return a data frame with the best offset per read/phase
-#' @export
 
 # TODO document the columns output by this function
 # TODO maybe also shortedn this by removing arguments?
@@ -145,6 +144,9 @@ get_incl_max_offsets <- function(rpfs, anno)
 #' @param method Method for p-site determination. Defaults to 'cds_incl'
 #'
 #' @return a dataframe with p-site offsets per readlength
+#' @examples
+#' cov <- get_readgr(ribobam, anno)
+#' offsets_df <- get_offsets(cov, anno)
 #' @export
 
 # TODO Add reference to a-p-site paper
@@ -153,6 +155,9 @@ get_offsets <- function(input, anno, method = "cds_incl") {
   if(is.character(input)&(length(input)==1)){
     message('loading footprint data')
     rpfs <- get_readgr(input, anno)
+  }else{
+    stopifnot(is(input,'GRanges'))
+    rpfs <- input
   }
   #
   if (method == "cds_incl") {

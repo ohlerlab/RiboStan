@@ -122,7 +122,7 @@ get_cov_rust_scores <- function(rpf_cov, cds_codons) {
 #' @keywords Ribostan
 #' @author Dermot Harnett, \email{dermot.p.harnett@gmail.com}
 #'
-#' @param rpf_cov A list of SimpleRleLists - RPF coverage split by readlength
+#' @param rpf_covs A list of SimpleRleLists - RPF coverage 
 #' @param cds_codons - GRanges object containing windows in which to get rust
 #' scores
 #'
@@ -158,13 +158,16 @@ get_sample_profs <- function(covgrs, cds_codons, n_wind_l_ext = 45) {
 #' @keywords Ribostan
 #' @author Dermot Harnett, \email{dermot.p.harnett@gmail.com}
 #'
-#' @param frustprofilelist A data frame with expected and actual rust score per position in
-#' window, codon, readlength
+#' @param covgrs a list of GRanges objects with RPF data
 #'
 #' @return A data frame with expected and actual rust score per position in
 #' window, codon, readlength
 
-get_kl_df <- function(frustprofilelist) {
+get_kl_df <- function(covgrs, anno) {
+  are_psites <- covgrs%>%vapply(function(x) 'orf'%in%colnames(mcols(x)),TRUE)
+  stopifnot(!any(are_psites)) 
+  cds_codons <- get_cds_codons(anno)
+  fprustprofilelist <- get_sample_profs(covgrs, cds_codons, n_wind_l_ext=45 )
   frustprofilelist %>%
     group_by(sample, nreadlen, position) %>%
     mutate(ro_cl = ro_cl / sum(ro_cl), re_c = re_c / sum(re_c)) %>%
@@ -293,7 +296,7 @@ export_codon_dts <- function(frustprofilelist, kl_offsets){
     inner_join(posseldf, by=c('position','nreadlen'))%>%
     ungroup%>%
     select(-re_c,-count,-position)%>%
-    dplyr::rename('RUST_score':=ro_cl)%>%
+    dplyr::rename('RUST_score'='ro_cl')%>%
     tidyr::pivot_wider(names_from='site',values_from='RUST_score')
    #
   allcodondt
