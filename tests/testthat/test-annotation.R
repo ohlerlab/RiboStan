@@ -14,7 +14,8 @@ test_that("loading annotation works", {
   expect_true(all(names(chr22_anno$cdsgrl) %in% names(chr22_anno$trspacecds)))
   testorfs <- chr22_anno$trspacecds %>% .[c(1, 66, 666, 6666)]
   testtrs <- fmcols(chr22_anno$cdsgrl[names(testorfs)], transcript_id)
-  exontestseq <- extractTranscriptSeqs(chr22_anno$exonsgrl[testtrs], x = chr22_anno$fafileob)
+  exontestseq <- GenomicFeatures::extractTranscriptSeqs(chr22_anno$exonsgrl[testtrs],
+    x = chr22_anno$fafileob)
   seqlevels(testorfs) <- names(exontestseq)
   testorfs <- resize(testorfs, width(testorfs) + 3)
   orftestseq <- exontestseq[testorfs]
@@ -29,15 +30,13 @@ test_that("loading annotation works", {
     chr22_anno$cdsgrl %>% .@unlistData %>% mcols() %>% colnames(),
     c("gene_id", "transcript_id", "gene_name", "type", "names")
   )
-
-
   extfasta <- make_ext_fasta(gtf, fafile, outfasta = "tmp.fa", fpext = 50, tpext = 50)
   extseqs <- rtracklayer::import(extfasta, format = "fasta")
   atgstarts <- extseqs %>%
     subseq(51, 53) %>%
     setNames(NULL) %>%
     as.character() %>%
-    is_in("ATG")
+    `%in%`("ATG")
   expect_true(mean(atgstarts) > 0.99)
   extorfs <- names(extseqs) %>% str_extract("[^|]+")
   expect_true(all(extorfs %in% (chr22_anno$uORF %>% .[!.] %>% names())))

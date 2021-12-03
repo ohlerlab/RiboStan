@@ -1,7 +1,3 @@
-#' @import GenomicFeatures
-#' @import GenomicFiles
-NULL
-
 id <- function(cov) BiocGenerics::match(cov, unique(cov))
 
 
@@ -216,7 +212,7 @@ get_psite_gr <- function(rpfs, offsets_df, anno) {
   orfs <- mergeseqlevels(orfs, rpfs)
   #
   orfov_ind <- findOverlaps(rpfs, orfs, select = "first", ignore.strand = TRUE)
-  rpfs$orf <- Rle(names(orfs)[orfov_ind])
+  rpfs$orf <- S4Vectors::Rle(names(orfs)[orfov_ind])
   rpfs$phase <- start(rpfs) - start(orfs)[orfov_ind]
   rpfs$phase <- rpfs$phase %% 3
   #
@@ -232,7 +228,7 @@ get_psite_gr <- function(rpfs, offsets_df, anno) {
     ) %>%
     .$p_offset
   rpfs <- rpfs %>% subset(!is.na(p_offset))
-  orfov <- countOverlaps(rpfs, orfs, ignore.strand = TRUE)
+  orfov <- GenomicRanges::countOverlaps(rpfs, orfs, ignore.strand = TRUE)
   is_mov_rpf <- orfov > 1
   # get phase for multi orf alignments
   mov_rpfs <- rpfs[is_mov_rpf]
@@ -639,6 +635,8 @@ gene_level_expr <- function(ripms, anno) {
 #' @details The Ribosome densities are saved in salmon format
 #' @export
 #' @examples
+
+
 get_exprfile <- function(ribobam, ribofasta, outfile) {
   #
   anno <- get_ribofasta_anno(ribofasta)
@@ -655,7 +653,10 @@ get_exprfile <- function(ribobam, ribofasta, outfile) {
   ritpms <- get_ritpms(psites, chr22_anno)
   #
   n_reads <- n_distinct(names(rpfs))
-  counts <- n_reads * (ritpms / 1e6)
+  lengths <- width(anno$trspacecds[names(ritpms)])
+  nucfracs <- (ritpms * lengths)
+  nucfracs <- nucfracs / sum(nucfracs)
+  counts <- n_reads * nucfracs
   counts <- tibble::enframe(counts, "Name", "NumReads")
   ritpmdf <- tibble::enframe(ritpms, "Name", "ritpm")
   #

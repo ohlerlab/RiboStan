@@ -258,6 +258,8 @@ select_offsets <- function(kl_df, method = "a_max") {
 #' @param selreadlens  integer vector of readlengths to plot
 #'
 #' @return a dataframe with p-site offsets per readlength
+#' @importFrom ggplot2 qplot theme_bw facet_grid scale_y_continuous 
+#' @importFrom ggplot2 scale_x_continuous geom_vline ggtitle
 #' @export
 
 plot_kl_dv <- function(kl_df, kl_offsets, selreadlens = NULL) {

@@ -73,7 +73,8 @@ ftestvect <- function(psit, k = 24, bw = 12) {
 #' ftests <- ftest_orfs(psites %>% head(10000), chr22_anno)
 ftest_orfs <- function(psites, anno) {
   #
-  orfs <- anno$trspacecds[unique(psites$orf)]
+  orfs <- intersect(unique(psites$orf), names(anno$trspacecds))
+  orfs <- anno$trspacecds[]
   psitecov <- psites %>%
     {
       x <- .
@@ -100,6 +101,43 @@ ftest_orfs <- function(psites, anno) {
   orflens <- width(orfs[spec_test_df$orf_id])
   spec_test_df$spec_coef <- spec_test_df$spec_coef / orflens
   # put in NA values for things we couldn't test
-  testdf <- tibble(orf_id = names(orfs)) %>% left_join(spec_test_df, by = "orf_id")
+  testdf <- tibble(orf_id = names(anno$cdsgrl)) %>% left_join(spec_test_df, by = "orf_id")
   testdf
+}
+
+
+
+#' Run Multitaper tests on a set of ORFs
+#'
+#' @keywords Ribostan
+#' @author Dermot Harnett, \email{dermot.p.harnett@gmail.com}
+#'
+#' @param psites 
+#' @param anno annotation object
+#'
+#' @details This function applies a multitaper test to
+#' @return a numeric vector with the spectral coefficient at 0.333... and the pvalue for the test
+#' @export
+#' @examples
+#' data(chr22_anno)
+#' data(rpfs)
+#' data(offsets_df)
+#' psites <- get_psite_gr(rpfs, offsets_df, chr22_anno)
+#' filteredanno <- periodicity_filter_uORFs(psites, chr22_anno)
+periodicity_filter_uORFs <- function(psites, anno, remove=TRUE){
+  stopifnot(!is.null(anno$uORF))
+  uORFs <- anno$uORF
+  uORFs <- unique(names(uORFs[uORFs]))
+  ftestdf <- ftest_orfs(psites, subset_annotation(anno, uORFs))
+  #I guess we can just add to all elements
+  if(is.null(mcols(anno$trspacecds)$spec_coef)) mcols(anno$trspacecds)$spec_coef <- NA
+  if(is.null(mcols(anno$trspacecds)$p.value)) mcols(anno$trspacecds)$p.value <- NA
+  mcols(anno$trspacecds[ftestdf$orf_id])<- ftestdf%>%select(-orf_id)
+  if(remove){
+    periodic_uORFs <- ftestdf%>%filter(p.value<0.05)%>%.$orf_id
+    non_periodic_uORFs <- setdiff(uORFs, periodic_uORFs)
+    orfs_to_keep <- setdiff(names(anno$trspacecds), non_periodic_uORFs)
+    anno <- subset_annotation(anno, orfs_to_keep)
+  }
+  anno
 }

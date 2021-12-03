@@ -27,7 +27,7 @@ vignette: >
 ```{r}
 
 #Loading annotation
-devtools::load_all('.')
+#devtools::load_all('.')
 #
 #first, let's load up some test data
 gtf <- system.file('extdata', 'gcv37.anno.chr22.gtf', package='Ribostan', 
@@ -45,6 +45,8 @@ rpfs <- get_readgr(testbam, chr22_anno)
 offsets_df <- get_offsets(rpfs, chr22_anno)
 #use our offsets to determine p-site locations
 psites <- get_psite_gr(rpfs, offsets_df, chr22_anno)
+#use our p-sites to filter the annotation 
+chr22_anno <- periodicity_filter_uORFs(chr22_anno, psites, remove=TRUE)
 
 #now, use Stan to estimate normalized p-site densities for our data
 ritpms <- get_ritpms(psites, chr22_anno)

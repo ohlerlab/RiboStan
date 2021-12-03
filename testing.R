@@ -110,6 +110,9 @@ allcodondt %>% readr::write_tsv('allcodondt.tsv')
 }
 
 {
+ribofasta = 'gencode.v19.annotation.orfext.fa'
+ribobam = 'star/ORFext/data/Membrane_WT_R2/Membrane_WT_R2.bam'
+devtools::load_all('../../Applications/Ribostan')
 
 }
 
