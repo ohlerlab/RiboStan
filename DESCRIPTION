@@ -7,6 +7,12 @@ Authors@R:
            role = c("aut", "cre"),
            email = "dermot.harnett@mdc-berlin.de",
            comment = c(github = "www.github.com/zslastman"))
+Maintainers@R: 
+    person(given = "Dermot",
+           family = "Harentt",
+           role = c("aut", "cre"),
+           email = "dermot.harnett@mdc-berlin.de",
+           comment = c(github = "www.github.com/zslastman"))
 Description: Ribostan is a simple package which contains functionality related
   to ribosomal footprint data and quantitative analysis thereof. It includes
   functions to align A/P sites by maximizing including in the CDS, to produce
@@ -25,6 +31,9 @@ biocViews: RiboSeq, Sequencing, QualityControl, DataImport, GenomeAnnotation,
 Suggests:
     knitr,
     rmarkdown,
+    BSgenome.Hsapiens.UCSC.hg38,
+    AnnotationHub,
+    BiocStyle,
 Imports:
     rtracklayer,
     rstan,

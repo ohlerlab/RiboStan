@@ -43,3 +43,18 @@ ms_df <- readr::read_tsv("/fast/AG_Ohler/dharnet/eif4f_pipeline/tables/sdr_ms_ri
 ms_df <- ms_df %>% filter(gene_id %in% str_replace(gritpms$gene_id, "\\.\\d+", ""))
 
 use_data(ms_df)
+ah = AnnotationHub()
+ah[['AH75191']]
+
+data(rpfs)
+trfstrands = strand(oldchr22$exonsgrl)%>%{.[as(rep(1,length(.)),'IntegerList')]}%>%unlist%>%as.character
+names(trfstrands) = names(oldchr22$exonsgrl)
+strand(rpfs) <- trfstrands[as.character(seqnames(rpfs))]
+nrpfs <- rpfs%>%mapFromTranscripts(oldchr22$exonsgrl)
+nrpfs <- nrpfs[width(nrpfs)==rpfs$readlen[nrpfs$xHits]]
+nrpfs <- keepSeqlevels(nrpfs, seqlevels(chr22_anno$exonsgrl))
+nrpfs <- unique(nrpfs)
+nrpfs <- nrpfs%>%mapToTranscripts(chr22_anno$exonsgrl)
+nrpfs <- nrpfs[width(nrpfs)==rpfs$readlen[nrpfs$xHits]]
+tbam = 'inst/extdata/nchr22.bam'
+nrpfs%>%rtracklayer::export(tbam)

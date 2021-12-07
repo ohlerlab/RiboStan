@@ -148,7 +148,7 @@ get_cds_reads <- function(cov, anno) {
   cov <- cov %>% keepSeqlevels(sharedseqnames, pruning = "coarse")
   seqlevels(cov) <- seqlevels(trspacecds)
   seqinfo(cov) <- seqinfo(trspacecds)
-  cov <- cov %>% subsetByOverlaps(trspacecds)
+  cov <- cov %>% IRanges::subsetByOverlaps(trspacecds)
 }
 
 
@@ -253,7 +253,7 @@ get_psite_gr <- function(rpfs, offsets_df, anno) {
   uniq_mov_rpfs <- mov_rpfs %>%
     resize(1, "start") %>%
     shift(.$p_offset) %>%
-    subsetByOverlaps(orfs) %>%
+    IRanges::subsetByOverlaps(orfs) %>%
     sample() %>%
     {
       .[match(unique(names(.)), names(.))]
@@ -269,7 +269,7 @@ get_psite_gr <- function(rpfs, offsets_df, anno) {
     subset(!is.na(p_offset)) %>%
     resize(1, "start") %>%
     shift(., .$p_offset)
-
+  psites <- psites[!is_out_of_bounds(psites)]
   # phaseshift the psites
 
   rl_phs_ <- mcols(psites)[, c("phase", "readlen")] %>%
@@ -343,7 +343,7 @@ get_readgr <- function(ribobam, anno, offsets_df = NULL, startstop = FALSE, stri
   }
   cov <- read_ribobam(ribobam, which)
   if (!is.null(offsets_df)) {
-    cov <- gRsamtools::et_psite_gr(cov, offsets_df, anno)
+    cov <- gRsamtools::get_psite_gr(cov, offsets_df, anno)
   } else {
     cov <- get_cds_reads(cov, anno)
   }
@@ -355,24 +355,24 @@ get_readgr <- function(ribobam, anno, offsets_df = NULL, startstop = FALSE, stri
 #'
 #' get optimal ritpms using stan
 #'
-#' @param cov GRanges object of
+#' @param psites GRanges object of
 #' @return A matrix of the infile
 
-get_read_spmat <- function(cov, anno) {
-  stopifnot(length(cov) > 0)
+get_read_spmat <- function(psites, anno) {
+  stopifnot(length(psites) > 0)
   orfs <- c(anno$trspacecds)
   #
-  cov <- mergeseqlevels(cov, orfs)
-  orfs <- mergeseqlevels(orfs, cov)
-  orfs <- subsetByOverlaps(orfs, cov)
+  psites <- mergeseqlevels(psites, orfs)
+  orfs <- mergeseqlevels(orfs, psites)
+  orfs <- IRanges::subsetByOverlaps(orfs, psites)
   #
   spmat <- Matrix::sparseMatrix(
-    i = names(cov) %>% id(),
-    j = cov$orf %>% id(),
+    i = names(psites) %>% id(),
+    j = psites$orf %>% id(),
     x = 1
   )
-  colnames(spmat) <- cov$orf %>% unique()
-  rownames(spmat) <- names(cov) %>% unique()
+  colnames(spmat) <- psites$orf %>% unique()
+  rownames(spmat) <- names(psites) %>% unique()
   spmat <- spmat / Matrix::rowSums(spmat)
   spmat
 }
@@ -397,6 +397,8 @@ optimize_ritpms <- function(spmat, anno, iternum = 500, verbose = FALSE) {
     unlist() %>%
     setNames(names(anno$trspacecds))
   # now let's try the whole shebang in rstan
+  setdiff(colnames(spmat),names(trlens))
+  stopifnot(colnames(spmat)%in%names(trlens))
   sptrlens <- trlens[colnames(spmat)]
   fdata <- list(nonorm_trlen = sptrlens)
   fdata <- c(fdata, spmat %>% rstan::extract_sparse_parts(.))
@@ -438,6 +440,7 @@ optimize_ritpms <- function(spmat, anno, iternum = 500, verbose = FALSE) {
 		}
 	"
   eqritpm_mod <- rstan::stan_model(model_code = modelcode)
+  message('optimizing...')
   opt <- rstan::optimizing(
     eqritpm_mod,
     data = fdata,
@@ -465,27 +468,20 @@ optimize_ritpms <- function(spmat, anno, iternum = 500, verbose = FALSE) {
 sample_cols_spmat <- function(spmat, return_mat = TRUE) {
   #
   # so I think p gives us element which is the final one for each
-  matsum <- summary(spmat)
+  matsum <- Matrix::summary(spmat)
   cs <- cumsum(spmat@x)
-  colsums <- colSums(spmat)
+  colsums <- Matrix::colSums(spmat)
   pts <- spmat@p
   prevcs <- c(0, cs[pts %>% tail(-1)])[matsum$j]
   cs <- cs - prevcs
   xold <- spmat@x
   spmat@x <- cs
-  spmat
-  spmatnm <- t(t(spmat) / colsums)
+  spmatnm <- Matrix::t(Matrix::t(spmat) / colsums)
   nvals <- spmat@x %>% length()
   passrand <- runif(nvals) < spmatnm@x
-  # firstpass = diff(c(0,passrand))==1
-  # logmat = spmat>0
-  # logmat@x = passrand
-  # (spmat*logmat)%>%summary%>%subset(x!=0)%>%nrow
-  #
   spmat@x <- xold
   spmat@x <- spmat@x * passrand
-  pass_summ <- summary(spmat) %>% as.data.frame()
-  # pass_summ$ind = 1:nrow(pass_summ)
+  pass_summ <- Matrix::summary(spmat) %>% as.data.frame()
   pass_summ <- pass_summ[pass_summ$x != 0, ]
   pass_summ <- pass_summ[diff(c(0, pass_summ$j)) > 0, ]
   # returnmatrix or the summary
@@ -508,7 +504,7 @@ sample_cols_spmat <- function(spmat, return_mat = TRUE) {
 #' This function takes in a sparse matrix, and then samples a single value
 #' from each column, with sampling weights within each column equal to
 #' the columns values
-#' @param cov A GRanges object containing RPFs
+#' @param psites A GRanges object containing RPFs
 #' @param anno An annotation object with a gene-transcript table
 #' @return a vector of normalized footprint densities
 #' @examples
@@ -522,9 +518,10 @@ sample_cols_spmat <- function(spmat, return_mat = TRUE) {
 #' ritpms <- get_ritpms(psites, chr22_anno)
 #' @export
 
-get_ritpms <- function(cov, anno) {
+get_ritpms <- function(psites, anno) {
+  psites <- psites%>%subset(orf %in% names(anno$trspacecds))
   # quantify_orfs
-  spmat <- get_read_spmat(cov, anno)
+  spmat <- get_read_spmat(psites, anno)
   #
   ritpm_opt <- optimize_ritpms(spmat, anno, iternum = 100)
   #
@@ -554,28 +551,30 @@ get_ritpms <- function(cov, anno) {
 #' This function takes in a coverage GR and takes one out of each multimap
 #' weighting according to the ritpms
 #'
-#' @param cov A GRanges object containing RPFs
+#' @param psites A GRanges object containing psites
 #' @param anno An annotation object with a gene-transcript table
 #' @param ritpms a vector of ribosoome densities
 #' @return a vector of normalized footprint densities
 
-sample_cov_gr <- function(cov, anno, ritpms) {
-  spmat <- get_read_spmat(cov, anno)
+sample_cov_gr <- function(psites, anno, ritpms) {
+  spmat <- get_read_spmat(psites, anno)
   #
-  matsample <- sample_cols_spmat(t(spmat) * ritpms, return_mat = FALSE)
+
+  spmat <- Matrix::t(spmat) * ritpms[colnames(spmat)]
+  matsample <- sample_cols_spmat(spmat,return_mat = FALSE)
 
   #
   iddf <- tibble(
-    rind = seq_along(cov),
-    j = names(cov) %>% id(),
-    i = as.numeric(id(cov$orf))
+    rind = seq_along(psites),
+    j = names(psites) %>% id(),
+    i = as.numeric(id(psites$orf))
   )
   #
   rinds <- iddf %>%
     inner_join(matsample, by = c("j", "i")) %>%
     .$rind
   #
-  sampcov <- cov[rinds]
+  sampcov <- psites[rinds]
   #
   sampcov
 }
@@ -642,15 +641,12 @@ get_exprfile <- function(ribobam, ribofasta, outfile) {
   anno <- get_ribofasta_anno(ribofasta)
   #
   rpfs <- get_readgr(ribobam, anno)
-  #
-  spmat <- get_read_spmat(rpfs, anno)
-  rpfs <- get_readgr(testbam, chr22_anno)
   # determine offsets by maximum CDS occupancy
-  offsets_df <- get_offsets(rpfs, chr22_anno)
+  offsets_df <- get_offsets(rpfs, anno)
   # use our offsets to determine p-site locations
-  psites <- get_psite_gr(rpfs, offsets_df, chr22_anno)
+  psites <- get_psite_gr(rpfs, offsets_df, anno)
   # now, use Stan to estimate normalized p-site densities for our data
-  ritpms <- get_ritpms(psites, chr22_anno)
+  ritpms <- get_ritpms(psites, anno)
   #
   n_reads <- n_distinct(names(rpfs))
   lengths <- width(anno$trspacecds[names(ritpms)])

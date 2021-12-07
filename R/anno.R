@@ -6,15 +6,17 @@
 #' @importFrom readr write_tsv read_tsv
 #' @import testthat
 #' @import ggplot2
-#' @importFrom IRanges IRanges
+#' @importFrom IRanges IRanges subsetByOverlaps overlapsAny
 #' @importFrom S4Vectors elementNROWS List subjectHits queryHits `%in%`
 #' @importFrom GenomeInfoDb Seqinfo keepSeqlevels seqnames seqlevels seqlengths 
 #' @importFrom GenomeInfoDb seqinfo seqlevels<- seqinfo<- seqnames<-
 #' @importFrom BiocGenerics intersect setdiff unlist table union mean order 
 #' @importFrom Biostrings subseq codons oligonucleotideFrequency nchar
 #' @importFrom GenomicRanges GRanges split GenomicRangesList strand mcols width
-#' @importFrom GenomicRanges strand<- mcols<- start end
-#' @importFrom GenomicRanges findOverlaps invertStrand seqnames resize 
+#' @importFrom GenomicRanges strand<- mcols<- start resize
+#' @importFrom GenomicRanges findOverlaps invertStrand seqnames end
+#' @importFrom GenomicRanges coverage shift
+#' @importFrom parallel detectCores
 #' @importFrom rtracklayer import export
 #' @importFrom Rsamtools ScanBamParam
 #' @importFrom tidyr replace_na unnest
@@ -411,6 +413,59 @@ width1grs <- function(gr) {
 ##########
 ################################################################################
 
+#' Convert old-style gtfs (e.g. those output by rtracklayer) to richer format
+#'
+#' @keywords Ribostan
+#' @author Dermot Harnett, \email{dermot.p.harnett@gmail.com}
+#'
+#' @param an annotation GRanges read in by rtracklayer
+#' @param keep_cols the columns to keep in the final annotation
+#' @return a granges object with just the exon and CDS elements 
+#' that ribostan uses
+convert_gtf <- function(anno, keep_cols)
+{
+  genedf <- mcols(anno)%>%as.data.frame%>%filter(type=='gene')%>%
+    mutate(gene_id=ID%>%str_replace('GeneID:',''))%>%
+    select(type,gene_id,gene_name=Name)
+  trdf <- mcols(anno)%>%as.data.frame%>%filter(type=='mRNA')%>%
+    mutate(transcript_id=ID)%>%
+    mutate(gene_id=Parent%>%str_replace('GeneID:',''))%>%
+    mutate(gene_name=Parent%>%str_replace('GeneID:',''))%>%
+    mutate(type='transcript')%>%
+    select(type,gene_name,gene_id,transcript_id,transcript_name=Name)
+  exondf <- mcols(anno)%>%as.data.frame%>%filter(type=='exon')%>%
+    mutate(exon_id=Name)%>%
+    mutate(transcript_id=Parent%>%stringr::str_replace_all('TxID:',''))%>%
+    select(type,exon_id,transcript_id,exon_name=Name)
+  #transcript_id is multiple
+  cds_df <- mcols(anno)%>%as.data.frame%>%filter(type=='CDS')%>%
+    mutate(transcript_id=Parent%>%stringr::str_replace_all('TxID:',''))%>%
+    select(type,transcript_id)
+  allcds <- anno%>%subset(type=='CDS')
+  parentsplit <- stringr::str_split(allcds$Parent,',')
+  parentnum <- parentsplit%>%as("CharacterList")%>%elementNROWS
+  allcds <- rep(allcds,parentnum)
+  allcds$Parent <- unlist(parentsplit)
+  allexons <- anno%>%subset(type=='exon')
+  parentsplit <- stringr::str_split(allexons$Parent,',')
+  parentnum <- parentsplit%>%as("CharacterList")%>%elementNROWS
+  allexons <- rep(allexons,parentnum)
+  allexons$Parent <- unlist(parentsplit)
+  #
+  allexons$transcript_id <- allexons$Parent
+  allcds$transcript_id <- allcds$Parent
+  trmatch<-match(allcds$transcript_id,trdf$transcript_id)
+  allcds$transcript_id <- trdf$transcript_id[trmatch]
+  allcds$gene_id <- trdf$gene_id[trmatch]
+  allcds$gene_name <- trdf$gene_name[trmatch]
+  extrmatch<-match(allexons$transcript_id,trdf$transcript_id)
+  allexons$transcript_id <- trdf$transcript_id[extrmatch]
+  allexons$gene_id <- trdf$gene_id[extrmatch]
+  allexons$gene_name <- trdf$gene_name[extrmatch]
+  
+  anno <- c(allexons,allcds)
+  anno
+}
 
 #' Get a set of filtered cds from an imported GTF GRanges
 #'
@@ -422,6 +477,7 @@ width1grs <- function(gr) {
 #' @param add_uorfs Whether to look for and include uORFs
 #' @param keep_cols columns to save from the gtf metadata
 #' @param DEFAULT_CIRC_SEQS default chromsoomes to treat as circular
+#' @param findUORFs_args Additional arguments to pass to ORFik::findUORFs
 #' @details This takes only coding sequences which are a multiple of 3bp and
 #' have a start and a stop on either end. it always returns coding sequences
 #' without the stops, regardless of their extent in the input.
@@ -443,7 +499,8 @@ width1grs <- function(gr) {
 load_annotation <- function(gtf, fafile, add_uorfs = TRUE,
                             ignore_orf_validity = FALSE,
                             keep_cols = c("gene_id", "transcript_id", "gene_name", "type"),
-                            DEFAULT_CIRC_SEQS=NULL
+                            DEFAULT_CIRC_SEQS=NULL,
+                            findUORFs_args = c(minimumLength=0)
                           ) {
   if(is.null(DEFAULT_CIRC_SEQS)){
     DEFAULT_CIRC_SEQS <- unique(c("chrM","MT","MtDNA","mit","Mito","mitochondrion",
@@ -452,13 +509,32 @@ load_annotation <- function(gtf, fafile, add_uorfs = TRUE,
                           "Mt", "NC_001879.2", "NC_006581.1","ChrM","mitochondrion_genome"))
   }
   anno <- rtracklayer::import(gtf)
+  ancols <- colnames(mcols(anno))
+  is_compressedgtf <- ('Parent'%in% ancols)&(!'transcript_id'%in%ancols)
+  if(is_compressedgtf){
+    message('reformatting gtf to include transcript_id etc in mcols')
+    anno <- convert_gtf(anno, keep_cols)
+  }
+  #for older gencode annotation
+  stopifnot(c('exon','CDS')%in%anno$type)
   stopifnot(all(keep_cols %in% colnames(mcols(anno))))
+
   anno <- anno[, keep_cols]
   fafileob <- Rsamtools::FaFile(fafile)
+
   Rsamtools::indexFa(fafile)
+  tokeep <- seqlevels(anno)%>%intersect(seqlevels(seqinfo(fafileob)))
+  toremove <- seqlevels(anno)%>%setdiff(seqlevels(seqinfo(fafileob)))
+  nonempty = intersect(toremove,seqnames(anno))
+  message(str_interp(paste0('removing ${length(nonempty)} non empty seqlevels',
+    ' that are absent from the fasta')))
+  anno <- anno %>% GenomeInfoDb::dropSeqlevels(nonempty,pruning='coarse')
+  empty = setdiff(toremove,seqnames(anno))
+  message(str_interp(paste0('removing ${length(empty)} non empty seqlevels',
+    ' that are absent from the fasta')))
+  anno <- anno %>% GenomeInfoDb::dropSeqlevels(empty,pruning='coarse')
   seqinfo(anno) <- seqinfo(fafileob)[as.vector(seqlevels(anno))]
   seqinfo(anno)@is_circular <- seqinfo(anno)@seqnames %in% DEFAULT_CIRC_SEQS
-  filt_anno <- anno
   #
   trgiddf <- anno %>%
     mcols() %>%
@@ -467,21 +543,26 @@ load_annotation <- function(gtf, fafile, add_uorfs = TRUE,
     distinct() %>%
     filter(!is.na(transcript_id))
   # get the cds not including stop codons, possibly filtering for valid orfs
-  cdsgrl <- get_cdsgrl(filt_anno, fafileob, ignore_orf_validity)
-  #
+  cdsgrl <- get_cdsgrl(anno, fafileob, ignore_orf_validity)
+  #add uORFs
   if (add_uorfs) {
     message("adding uORFs..")
     anno$phase <- NULL
     txdb <- GenomicFeatures::makeTxDbFromGRanges(anno)
     fiveutrs <- GenomicFeatures::fiveUTRsByTranscript(txdb, use.names = TRUE)
-    alluORFs <- ORFik::findUORFs(fiveutrs, fafile)
+    validutrs <- names(fiveutrs)%>%intersect(names(cdsgrl))
+    fiveutrs <- fiveutrs[validutrs]
+    alluORFs <- do.call(what=ORFik::findUORFs, args = c(findUORFs_args,list(
+      fiveUTRs = fiveutrs, 
+      fa = fafile ,
+      cds = cdsgrl[validutrs]
+    )))
     alluORFs <- alluORFs %>%
       {
         .@unlistData@ranges@NAMES <- NULL
         .
       } %>%
       unlist()
-    # uorftrs <- names(alluORFs_ul)%>%str_replace('_\\d+$', '')
     alluORFs$transcript_id <- names(alluORFs) %>% str_replace("_\\d+$", "")
     alluORFs$type <- "CDS"
     alluORFs$gene_id <- trgiddf$gene_id[
@@ -515,13 +596,14 @@ load_annotation <- function(gtf, fafile, add_uorfs = TRUE,
   #
   orf_transcripts <- fmcols(cdsgrl, transcript_id)
   # subset cds and anno with these
-  filt_anno <- filt_anno %>%
+  anno <- anno %>%
     subset(type != "CDS") %>%
     subset(transcript_id %in% orf_transcripts)
   #
-  filt_anno <- c(filt_anno, unlist(cdsgrl))
-  exonsgrl <- filt_anno %>%
+  anno <- c(anno, unlist(cdsgrl))
+  exonsgrl <- anno %>%
     subset(type == "exon") %>%
+    sort_grl_st%>%
     split(., .$transcript_id)
   exon_tr_names <- names(exonsgrl)
   stopifnot(all(orf_transcripts %in% exon_tr_names))
@@ -635,9 +717,7 @@ make_ext_fasta <- function(gtf, fasta, outfasta, fpext = 50, tpext = 50) {
   keepcols <- c(
     "transcript_id", "type",
     "gene_id",
-    "havana_gene",
-    "havana_transcript",
-    "transcript_name",
+    # "transcript_name",
     "gene_name"
   )
   anno <- load_annotation(gtf, fasta,
@@ -706,9 +786,12 @@ make_ext_fasta <- function(gtf, fasta, outfasta, fpext = 50, tpext = 50) {
     sep = "|",
     fmcols(cdsexonsgrl, transcript_id),
     fmcols(cdsexonsgrl, gene_id),
-    fmcols(cdsexonsgrl, havana_gene),
-    fmcols(cdsexonsgrl, havana_transcript),
-    fmcols(cdsexonsgrl, transcript_name),
+    # fmcols(cdsexonsgrl, havana_gene),
+    NA,
+    # fmcols(cdsexonsgrl, havana_transcript),
+    NA,
+    # fmcols(cdsexonsgrl, transcript_name),
+    NA,
     fmcols(cdsexonsgrl, gene_name),
     sum(width(cdsexonsgrl)),
     paste0("UTR5:1-", fpext),
@@ -799,6 +882,9 @@ get_ribofasta_anno <- function(ribofasta) {
   ) %>%
     setNames(., as.character(seqnames(.)))
   strand(anno$trspacecds) <- "+"
+  seqinfo(anno$trspacecds) <- Seqinfo( 
+    faheaddf[,1],
+    faheaddf[,10]%>%str_extract('(?<=-)\\d+')%>%as.numeric)
   anno$trgiddf <- tibble(transcript_id = faheaddf[, 1], gene_id = faheaddf[, 2])
   anno$trgiddf$orf_id <- anno$trgiddf$transcript_id
   anno <- c(

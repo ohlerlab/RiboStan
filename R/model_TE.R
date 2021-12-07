@@ -92,6 +92,8 @@ get_psitecov <- function(rpfs, offsets_df, anno) {
 
 get_sitedf <- function(psite_cov, anno) {
   #
+  stopifnot(length(psite_cov)>0)
+  stopifnot(length(anno$cdsgrl)>0)
   sitedf <- psite_cov %>%
     lapply(. %>% matrix(nrow = 3) %>% colSums()) %>%
     stack()
@@ -126,6 +128,7 @@ get_sitedf <- function(psite_cov, anno) {
 #' @param n_genes - how many genes to use for the model - most highly expressed
 #'  used first
 #' @param method - which method to use to estimate the codon occupancies,
+#' @param covthresh - how many reads to require in an ORF for it to be used
 #' defaults to RUST
 #' @return 	a data frame with columns codon,position,estimate,upper,lower,
 #' p.value
@@ -140,17 +143,17 @@ get_sitedf <- function(psite_cov, anno) {
 #' @export
 
 get_codon_occs <- function(psites, offsets_df,
-                           anno, n_genes = 1000, method = "linear") {
-  #
-  # allpsitecov <- get_psitecov(psites, offsets_df, anno)
-  #
+                           anno, n_genes = 1000, covthresh=10, method = "linear") {
   highcov <- psites$orf %>%
     table() %>%
-    .[. > 10]
+    .[. > covthresh]
+  stopifnot(length(highcov)>n_genes)
   toporfs <- highcov %>%
     sort() %>%
-    tail(n_genes) %>%
-    names()
+    names %>%
+    intersect(names(anno$trspacecds))%>%
+    tail(n_genes)
+  stopifnot(length(toporfs)==n_genes)
   unq_orfs <- anno$trspacecds[toporfs]
   psitecov <- psites %>%
     subset(orf %in% toporfs) %>%

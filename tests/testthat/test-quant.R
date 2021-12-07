@@ -1,4 +1,5 @@
-test_that("test optimisation of quantification works", {
+test_that("test optimisation of quantification works", 
+{
   data(chr22_anno)
   data(rpfs)
   data(offsets_df)
@@ -21,4 +22,5 @@ test_that("test optimisation of quantification works", {
 
   ftests <- ftest_orfs(psites %>% head(10000), chr22_anno)
   expect_equal(colnames(ftests), c("orf_id", "spec_coef", "p.value"))
-})
+}
+)

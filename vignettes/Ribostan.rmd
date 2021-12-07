@@ -3,9 +3,6 @@ title: "Ribostan"
 package: "Ribostan"
 author: "Dermot Harnett"
 output: 
- html_notebook:
-  toc: yes
-output: 
   BiocStyle::html_document
 vignette: >
   %\VignetteIndexEntry{Ribostan}
@@ -14,7 +11,21 @@ vignette: >
 
 ---
   
-# Vignette RiboEM
+# Introduction
+
+Ribo-seq is a specific form of RNA-seq expression assay in which the
+fragments sequenced are footprints of actively translating Ribosomes.
+Ribo-seq experiments of necessity have much shorter read-lenegths than
+RNA-seq experiments, which can complicate quantification. In principle,
+Ribo-seq experiments provide nucleotide resolution information about
+the location of ribosomes, and can thus be used to elucidate the dynamics
+of Ribosomal elongation, and initiation. In practice, determining where
+the Ribosome's A/P-site is in relation to the footprint is complicated by
+random variations in footprint size and location, which 'blur' the
+positions of ribosomes. Ribostan is a collection of tools for the
+analysis of Riboseq which include isoform-aware quantification, P/A
+site alignment via several methods, and uORF identification via
+multitaper periodicity test (similiar to ORFquant and Ribotaper).
   
 # Setup
   
@@ -25,44 +36,80 @@ vignette: >
 
 
 ```{r}
-
-#Loading annotation
-#devtools::load_all('.')
-#
 #first, let's load up some test data
-gtf <- system.file('extdata', 'gcv37.anno.chr22.gtf', package='Ribostan', 
+anno_file <- 'test.gc32.gtf'
+if(!file.exists(anno_file)){
+  library(AnnotationHub)
+  ah <- AnnotationHub()
+  gencode32 <- ah[['AH75191']]
+   seqlevels(gencode32)<-'chr22'
+  rtracklayer::export(gencode32, anno_file)
+}
+fafile <- 'chr22.fa'
+library(BSgenome.Hsapiens.UCSC.hg38)
+if(!file.exists(fafile)){
+  seq <- Biostrings::DNAStringSet(BSgenome.Hsapiens.UCSC.hg38[['chr22']])
+ Biostrings::writeXStringSet(
+  seq, fafile)
+}
+#now load Ribo-seq data, reading in the transcript-space alignments
+testbam <- system.file('extdata', 'nchr22.bam', package='Ribostan',
   mustWork=TRUE)
-fafile <- system.file('extdata', 'chr22.fa.gz', package='Ribostan',
-  mustWork=TRUE)
+
+```
+
+# Loading Data
+Ribostan includes various functionality for a) filtering ORFs in an existing annotation,
+and b) finding potential uORFs. By default, load_annotation will keep only those ORFs
+which are multiples of 3bp long, and which begin with a start codon and end wth a stop.
+Ribostan will also search for uORFs for those ORFs, by default allowing uORFs that are
+as short as 2bp. The function load_annotation caries out these filterng steps and creates
+an object with an attached fasta file for use by other Ribostan functions. The function
+get_readgr loads ribosomal footprint alignments (including multimappers).
+
+```{r}
+
 #now load our annootation, filter out suspect ORFs, and find potential uORFs
 chr22_anno <- load_annotation(anno_file, fafile, add_uorfs=TRUE)
-
-#now load Ribo-seq data, reading in the transcript-space alignments
-testbam <- system.file('extdata', 'chr22.bam', package='Ribostan',
-  mustWork=TRUE)
 rpfs <- get_readgr(testbam, chr22_anno)
+
+```
+
+# From RPF alignments to P-sites
+An RPF alignment is ambiguous with respect to the position of the underlying ribosome
+because a) it maybe be multimapping, and it's actual origin thus uncertain, and b)
+stochastic processes underlying footprint size and location mean that the precise
+location of the p-site must be determined. Various methods exist to do this, Ribostan
+makes use of the method described by Ahmed et al 2019, in which for each phase and read
+length, an offset is chose than maximizes the number of reads within the CDS. The function
+get_offsets creates a dataframe describing the optimal offsets using this process, and the
+function get_psite_gr applies these offsets to the alignments, annotating their
+ORF of origin (which is chosen randomly in the rare case where a footprint's psite
+ plausibly overlaps more than one ORF, since more than one phase/offset is possible).
+```{r}
+
 #determine offsets by maximum CDS occupancy
 offsets_df <- get_offsets(rpfs, chr22_anno)
 #use our offsets to determine p-site locations
 psites <- get_psite_gr(rpfs, offsets_df, chr22_anno)
-#use our p-sites to filter the annotation 
-chr22_anno <- periodicity_filter_uORFs(chr22_anno, psites, remove=TRUE)
+```
 
-#now, use Stan to estimate normalized p-site densities for our data
-ritpms <- get_ritpms(psites, chr22_anno)
-#and get these at the gene level (ignoring uORFs)
-gritpms = gene_level_expr(ritpms, chr22_anno)
 
-#get codon-level occupanies using RUST
-rust_codon_occ_df <- get_codon_occs(psites, offsets_df, chr22_anno,
-  n_genes=1000, method='RUST_glm')
-#get predicted mean elongation rates for ORFs
-orf_elong = get_orf_elong(chr22_anno, rust_codon_occ_df)
-#and at the gene level, ingoring uORFs
-gn_elong = gene_level_elong(orf_elong, ritpms, chr22_anno)
+#Verifying offsets with KL-divergence
+Most methods of determinig P-site offsets, including the one above, are vaulnerable
+to error when unusual patterns of footprints exist at the start/end of the CDS.
+An orthogonal means of determining A/P site offsets is to plot KL-divergence in
+'metacodon' profiles - KL divergence measures the degree to which the underlying
+codon predicts density at a given location relative to it, and will typically have
+two large peaks due to cut-site bias at 0 and -read_length, along with a peak between
+these corresponding to the influence of codon-specific dwell time at the A and P site.
+(see O'Connor et al 2016). get_metacodon_profs, derives average, normalized  profiles
+around each codon, and get_kl_df derives the KL divergence per 
+read_length/sample/location. Plotting these provides an orthogonal means of verifying
+p-site offsets.
 
-#Using the KL divergence, deterine offsets in a way that's not dependent on
-#patterns at the start/stop
+```{r}
+
 covgrs = list(sample1=rpfs)
 metacodondf <- get_metacodon_profs(covgrs, chr22_anno)
 kl_df<-get_kl_df(metacodondf, chr22_anno)
@@ -73,11 +120,51 @@ kl_offsets%>%select(p_offset,length=nreadlen)%>%
 kl_div_plot <- plot_kl_dv(kl_df, kl_offsets)
 #
 allcodondt <- export_codon_dts(metacodondf, kl_offsets)
-kable(allcodondt)
+knitr::kable(allcodondt)
 
-#Metaplots
-#Kl plot
-#Detect Periodicity
-#Gene level Elong
+```
+
+# Periodicity quantification
+ORF peridicity is a good diagnostic tool for identifying bona fida translation
+(non periodic noise such as RPFs with ribosome-like footprints can generate
+riboseq-signal in untranslated regions). The function periodicity_filter_uORFs
+filters the uORFs found by load_annotation by searching for periodicity in psites.
+get_ritpms furthermore carries out optimization of ribosome densities, and,
+similiarly to programs like salmon or RSEM, performs isoform-aware quantification.
+multimapping psites can then be sampled according to these TPMs, to give an estimate
+of true ribosome locations.
+```{r}
+#use our p-sites to filter the annotation 
+chr22_anno <- periodicity_filter_uORFs( psites, chr22_anno, remove=TRUE)
+#now, use Stan to estimate normalized p-site densities for our data
+ritpms <- get_ritpms(psites, chr22_anno)
+#and get these at the gene level (ignoring uORFs)
+gritpms = gene_level_expr(ritpms, chr22_anno)
+#and remove multimapped alignments from the psites
+psites <- psites%>%subset(orf%in%names(chr22_anno$trspacecds))
+psites <- sample_cov_gr(psites, chr22_anno, ritpms)
+
+knitr::kable(enframe(head(ritpms)))
+knitr::kable(enframe(head(gritpms)))
+```
+
+
+# Periodicity quantification
+With P-site locations determined, this nucleotide resolution information on ribosome
+positioning can be used to estimate which codons show high or low occupancy, which
+given relative independance between codons will be linearly propertional to dwell time
+in a given sample. These codon level occupancies can be averaged foir all codons in an
+ORF to predict which ORFs are fast or slow.
+
+```{r}
+#get codon-level occupanies using RUST
+rust_codon_occ_df <- get_codon_occs(psites, offsets_df, chr22_anno,
+  n_genes=1000, method='RUST_glm')
+#get predicted mean elongation rates for ORFs
+orf_elong = get_orf_elong(chr22_anno, rust_codon_occ_df)
+#and at the gene level, ingoring uORFs
+gn_elong = gene_level_elong(orf_elong, ritpms, chr22_anno)
+
+kable(enframe(gn_elong))
 
 ```

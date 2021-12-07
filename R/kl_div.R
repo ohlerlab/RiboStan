@@ -146,10 +146,17 @@ get_metacodon_profs <- function(covgrs, anno, n_wind_l_ext = 45) {
     rlsplitcov <- split(resize(covgr, 1, "start"), covgr$readlen)
     lapply(rlsplitcov, coverage)
   })
-  rust_roel <- mclapply(
-    mc.cores = detectCores(), cdsfpcovlist, cds_codons = cds_codons,
-    get_cov_rust_scores
+  lapplyfunc <- if('paralell'%in%installed.packages()){
+    rust_roel <- parallel::mclapply(
+      mc.cores = detectCores(), cdsfpcovlist, cds_codons = cds_codons,
+      F = get_cov_rust_scores
   )
+  }else{
+    rust_roel <- lapply(cdsfpcovlist, cds_codons = cds_codons,
+      F = get_cov_rust_scores
+  )
+  }
+  
   # https://www.nature.com/articles/ncomms12915#Sec10 see equation 3
   # of RUST paper
   metacodondf <- bind_rows(rust_roel, .id = "sample")

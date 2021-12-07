@@ -63,7 +63,8 @@ ftestvect <- function(psit, k = 24, bw = 12) {
 #' @param anno annotation object
 #'
 #' @details This function applies a multitaper test to
-#' @return a numeric vector with the spectral coefficient at 0.333... and the pvalue for the test
+#' @return a numeric vector with the spectral coefficient at 0.333...
+#' and the pvalue for the test
 #' @export
 #' @examples
 #' data(chr22_anno)
@@ -83,12 +84,13 @@ ftest_orfs <- function(psites, anno) {
       coverage(out)
     }
   #
-  ncores <- detectCores()
+  ncores <- parallel::detectCores()
   psitecov <- psitecov[sum(psitecov > 0) > 1]
   # now run multitaper tests on our data using multiple
   # cores if available
   message("running multitaper tests, this will be slow for a full dataset...")
-  spec_tests <- psitecov %>% mclapply(F = ftestvect, mc.cores = ncores)
+  spec_tests <- psitecov %>% 
+    parallel::mclapply(F = ftestvect, mc.cores = ncores)
   # now format the output
   spec_test_df <- spec_tests %>%
     simplify2array() %>%
@@ -101,7 +103,8 @@ ftest_orfs <- function(psites, anno) {
   orflens <- width(orfs[spec_test_df$orf_id])
   spec_test_df$spec_coef <- spec_test_df$spec_coef / orflens
   # put in NA values for things we couldn't test
-  testdf <- tibble(orf_id = names(anno$cdsgrl)) %>% left_join(spec_test_df, by = "orf_id")
+  testdf <- tibble(orf_id = names(anno$cdsgrl)) %>% 
+    left_join(spec_test_df, by = "orf_id")
   testdf
 }
 
