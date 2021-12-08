@@ -16,8 +16,8 @@ test_that("test optimisation of quantification works",
     left_join(gritpms) %>%
     filter(is.finite(log2(expr))) %>%
     filter(ribo > 0)
-  expect_true(nrow(compdf) == 81)
-  expect_true(cor(compdf$ribo, log2(compdf$expr)) > 0.75)
+  expect_true(nrow(compdf) == 39)
+  expect_true(cor(compdf$ribo, log2(compdf$expr)) > 0.66)
 
 
   ftests <- ftest_orfs(psites %>% head(10000), chr22_anno)

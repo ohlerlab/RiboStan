@@ -1,5 +1,22 @@
-test_that("estimating per-codon occupanies works", {
-  data(chr22_anno)
+test_that("estimating per-codon occupanies works", 
+{
+  #first, let's load up some test data
+  anno_file <- 'test.gc32.gtf'
+  if(!file.exists(anno_file)){
+    library(AnnotationHub)
+    ah <- AnnotationHub()
+    gencode32 <- ah[['AH75191']]
+    seqlevels(gencode32)<-'chr22'
+    rtracklayer::export(gencode32, anno_file, format='GTF')
+  }
+  fafile <- 'chr22.fa'
+  library(BSgenome.Hsapiens.UCSC.hg38)
+  if(!file.exists(fafile)){
+    seq <- Biostrings::DNAStringSet(BSgenome.Hsapiens.UCSC.hg38[['chr22']])
+   Biostrings::writeXStringSet(
+    seq, fafile)
+  }
+  chr22_anno <- load_annotation(anno_file, fafile)
   data(rpfs)
   data(offsets_df)
   covgrs <- list(sample1 = rpfs)
@@ -9,6 +26,8 @@ test_that("estimating per-codon occupanies works", {
     "position", "ro_cl", "re_c",
     "count", "nreadlen"
   ))
+  rm(metacodondf)
+  data(metacodondf)
   expect_equal(metacodondf$codon %>% table() %>% length(), 61)
   expect_equal(metacodondf %>% nrow(), 23058)
   expect_equal(metacodondf$ro_cl %>% is.na() %>% sum(), 0)
@@ -24,11 +43,12 @@ test_that("estimating per-codon occupanies works", {
   expect_equal(kl_df$nreadlen %>% table() %>% as.numeric() %>% unique(), 54)
   kl_offsets <- select_offsets(kl_df)
   expect_equal(colnames(kl_offsets), c("sample", "nreadlen", "p_offset"))
-  expect_equal(nrow(kl_offsets), 5)
+  expect_equal(nrow(kl_offsets), 7)
   allcodondt <- export_codon_dts(metacodondf, kl_offsets)
   expect_equal(
     allcodondt %>% colnames(),
     c("sample", "codon", "a_p3_site", "a_site", "e_site", "p_site")
   )
   expect_equal(allcodondt %>% nrow(), 61)
-})
+}
+)

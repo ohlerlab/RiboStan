@@ -606,7 +606,9 @@ sample_cov_gr <- function(psites, anno, ritpms) {
 
 gene_level_expr <- function(ripms, anno) {
   trgiddf <- anno$trgiddf
-  trgiddf <- trgiddf %>% subset(!uORF)
+  if('uORF'%in%colnames(trgiddf)){
+    trgiddf <- trgiddf %>% subset(!uORF)
+  }
   #
   gn_expr <- left_join(
     trgiddf,

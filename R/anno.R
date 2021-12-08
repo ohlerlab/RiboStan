@@ -515,15 +515,19 @@ load_annotation <- function(gtf, fafile, add_uorfs = TRUE,
     message('reformatting gtf to include transcript_id etc in mcols')
     anno <- convert_gtf(anno, keep_cols)
   }
+  stopifnot(length(anno)>0)
   #for older gencode annotation
   stopifnot(c('exon','CDS')%in%anno$type)
   stopifnot(all(keep_cols %in% colnames(mcols(anno))))
 
   anno <- anno[, keep_cols]
+  stopifnot(file.exists(fafile))
   fafileob <- Rsamtools::FaFile(fafile)
-
   Rsamtools::indexFa(fafile)
   tokeep <- seqlevels(anno)%>%intersect(seqlevels(seqinfo(fafileob)))
+  stopifnot(length(seqlevels(seqinfo(fafileob)))>0)
+  stopifnot(seqlevels(seqinfo(fafileob))>0)
+  stopifnot(length(tokeep)>0)
   toremove <- seqlevels(anno)%>%setdiff(seqlevels(seqinfo(fafileob)))
   nonempty = intersect(toremove,seqnames(anno))
   message(str_interp(paste0('removing ${length(nonempty)} non empty seqlevels',
@@ -542,6 +546,7 @@ load_annotation <- function(gtf, fafile, add_uorfs = TRUE,
     as.data.frame() %>%
     distinct() %>%
     filter(!is.na(transcript_id))
+  trgiddf$orf_id <- trgiddf$transcript_id
   # get the cds not including stop codons, possibly filtering for valid orfs
   cdsgrl <- get_cdsgrl(anno, fafileob, ignore_orf_validity)
   #add uORFs

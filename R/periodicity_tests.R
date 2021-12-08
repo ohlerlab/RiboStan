@@ -61,6 +61,7 @@ ftestvect <- function(psit, k = 24, bw = 12) {
 #'
 #' @param psites A GRanges object containing psites
 #' @param anno annotation object
+#' @param n_cores number of cores to use
 #'
 #' @details This function applies a multitaper test to
 #' @return a numeric vector with the spectral coefficient at 0.333...
@@ -71,8 +72,10 @@ ftestvect <- function(psit, k = 24, bw = 12) {
 #' data(rpfs)
 #' data(offsets_df)
 #' psites <- get_psite_gr(rpfs, offsets_df, chr22_anno)
-#' ftests <- ftest_orfs(psites %>% head(10000), chr22_anno)
-ftest_orfs <- function(psites, anno) {
+#' ftests <- ftest_orfs(psites %>% head(10000), chr22_anno, 
+#'   n_cores=1)
+
+ftest_orfs <- function(psites, anno, n_cores=1) {
   #
   orfs <- intersect(unique(psites$orf), names(anno$trspacecds))
   orfs <- anno$trspacecds[]
@@ -115,8 +118,10 @@ ftest_orfs <- function(psites, anno) {
 #' @keywords Ribostan
 #' @author Dermot Harnett, \email{dermot.p.harnett@gmail.com}
 #'
-#' @param psites 
-#' @param anno annotation object
+#' @param psites GRanges object with psite information
+#' @param anno  annotation object
+#' @param remove  whether to remove non-peridic uORFs
+#' @param n_cores  number of cores to use
 #'
 #' @details This function applies a multitaper test to
 #' @return a numeric vector with the spectral coefficient at 0.333... and the pvalue for the test
@@ -127,7 +132,7 @@ ftest_orfs <- function(psites, anno) {
 #' data(offsets_df)
 #' psites <- get_psite_gr(rpfs, offsets_df, chr22_anno)
 #' filteredanno <- periodicity_filter_uORFs(psites, chr22_anno)
-periodicity_filter_uORFs <- function(psites, anno, remove=TRUE){
+periodicity_filter_uORFs <- function(psites, anno, remove=TRUE, n_cores=1){
   stopifnot(!is.null(anno$uORF))
   uORFs <- anno$uORF
   uORFs <- unique(names(uORFs[uORFs]))

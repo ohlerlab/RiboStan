@@ -135,6 +135,7 @@ get_cov_rust_scores <- function(rpf_cov, cds_codons) {
 #' @details gets profiles of read 5' end occurence around codons
 #' @return A data frame with expected and actual rust score per position in
 #' window, codon, readlength
+#' @export
 
 get_metacodon_profs <- function(covgrs, anno, n_wind_l_ext = 45) {
   are_psites <- covgrs %>% vapply(function(x) "orf" %in% colnames(mcols(x)), TRUE)
@@ -184,7 +185,7 @@ get_metacodon_profs <- function(covgrs, anno, n_wind_l_ext = 45) {
 #' kl_df <- get_kl_df(metacodondf, chr22_anno)
 #' @return A data frame with expected and actual rust score per position in
 #' window, codon, readlength
-
+#' @export
 get_kl_df <- function(metacodondf, anno) {
   metacodondf %>%
     group_by(sample, nreadlen, position) %>%
@@ -268,8 +269,8 @@ select_offsets <- function(kl_df, method = "a_max") {
 #' @importFrom ggplot2 qplot theme_bw facet_grid scale_y_continuous 
 #' @importFrom ggplot2 scale_x_continuous geom_vline ggtitle
 #' @export
-
-plot_kl_dv <- function(kl_df, kl_offsets, selreadlens = NULL) {
+# selreadlens=27:31
+plot_kl_dv <- function(kl_df, kl_offsets, selreadlens = 27:32) {
   stopifnot(c("position", "nreadlen", "KL", "sample") %in% colnames(kl_df))
   stopifnot(c("nreadlen", "sample", "p_offset") %in% colnames(kl_offsets))
   #
@@ -277,30 +278,29 @@ plot_kl_dv <- function(kl_df, kl_offsets, selreadlens = NULL) {
     kl_offsets <- kl_offsets %>% filter(nreadlen %in% selreadlens)
   }
   #
-  kl_df %>%
+  kl_div_plot <- kl_df %>%
     filter(position < -3) %>%
     filter(position > -(nreadlen - 6)) %>%
     # separate(sample,c('fraction','genotype','rep'),remove=F)%>%
-    filter(nreadlen %in% selreadlens) %>%
+    filter(nreadlen %in% selreadlens) %>% 
     {
       qplot(data = ., x = position, y = KL) +
         theme_bw() +
-        facet_grid(nreadlen ~ sample) +
+        facet_grid(nreadlen ~ sample,scale='free_y') +
         scale_y_continuous("RUST KL divergence") +
         scale_x_continuous("5 read position relative to codon ") +
         geom_vline(
-          data = kl_offsets, aes(xintercept = p_offset - 3),
+          data = kl_offsets, aes(xintercept = -p_offset - 3),
           color = I("green"), linetype = 2
         ) +
         geom_vline(
-          data = kl_offsets, aes(xintercept = p_offset),
+          data = kl_offsets, aes(xintercept = -p_offset),
           color = I("blue"), linetype = 2
         ) +
         ggtitle("RUST KL divergence vs position")
     }
+  kl_div_plot
 }
-
-
 
 #' Create a dataframe with a_site, p_site and e site occupancies
 #'

@@ -6,7 +6,7 @@ output:
   BiocStyle::html_document
 vignette: >
   %\VignetteIndexEntry{Ribostan}
-  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEngine{rmarkdown::render}
   %\VignetteEncoding{UTF-8}  
 
 ---
@@ -30,14 +30,14 @@ multitaper periodicity test (similiar to ORFquant and Ribotaper).
 # Setup
   
 ```{r loadinglibraries, include=FALSE, echo=FALSE, eval=T}
-# library(Ribostan)
+library(Ribostan)
 ```
 
 
 
 ```{r}
 #first, let's load up some test data
-anno_file <- 'test.gc32.gtf'
+anno_file <- here::here('test.gc32.gtf')
 if(!file.exists(anno_file)){
   library(AnnotationHub)
   ah <- AnnotationHub()
@@ -45,7 +45,7 @@ if(!file.exists(anno_file)){
    seqlevels(gencode32)<-'chr22'
   rtracklayer::export(gencode32, anno_file)
 }
-fafile <- 'chr22.fa'
+fafile <- here::here('chr22.fa')
 library(BSgenome.Hsapiens.UCSC.hg38)
 if(!file.exists(fafile)){
   seq <- Biostrings::DNAStringSet(BSgenome.Hsapiens.UCSC.hg38[['chr22']])
@@ -124,7 +124,7 @@ knitr::kable(allcodondt)
 
 ```
 
-# Periodicity quantification
+# Periodicity And Quantification
 ORF peridicity is a good diagnostic tool for identifying bona fida translation
 (non periodic noise such as RPFs with ribosome-like footprints can generate
 riboseq-signal in untranslated regions). The function periodicity_filter_uORFs
@@ -144,12 +144,12 @@ gritpms = gene_level_expr(ritpms, chr22_anno)
 psites <- psites%>%subset(orf%in%names(chr22_anno$trspacecds))
 psites <- sample_cov_gr(psites, chr22_anno, ritpms)
 
-knitr::kable(enframe(head(ritpms)))
-knitr::kable(enframe(head(gritpms)))
+knitr::kable(tibble::enframe(head(ritpms)))
+knitr::kable(head(gritpms))
 ```
 
 
-# Periodicity quantification
+# 
 With P-site locations determined, this nucleotide resolution information on ribosome
 positioning can be used to estimate which codons show high or low occupancy, which
 given relative independance between codons will be linearly propertional to dwell time
@@ -157,14 +157,14 @@ in a given sample. These codon level occupancies can be averaged foir all codons
 ORF to predict which ORFs are fast or slow.
 
 ```{r}
-#get codon-level occupanies using RUST
+#get codon-level occupanies using RUST (at least 1000 should be used 
+#for n_genes on  a real run)
 rust_codon_occ_df <- get_codon_occs(psites, offsets_df, chr22_anno,
-  n_genes=1000, method='RUST_glm')
+  n_genes=20, method='RUST_glm')
 #get predicted mean elongation rates for ORFs
 orf_elong = get_orf_elong(chr22_anno, rust_codon_occ_df)
 #and at the gene level, ingoring uORFs
 gn_elong = gene_level_elong(orf_elong, ritpms, chr22_anno)
-
-kable(enframe(gn_elong))
+knitr::kable(head(gn_elong))
 
 ```
