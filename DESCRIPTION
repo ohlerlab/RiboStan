@@ -24,7 +24,7 @@ License: `use_mit_license()`, `use_gpl3_license()` or friends to
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.1.2
-VignetteBuilder: rmarkdown
+VignetteBuilder: knitr
 Config/testthat/edition: 3
 biocViews: RiboSeq, Sequencing, QualityControl, DataImport, GenomeAnnotation,
   Transcriptomics, Software, Coverage, RNASeq
@@ -55,6 +55,7 @@ Imports:
     dplyr,
     multitaper,
     tidyr,
-    magrittr
+    magrittr,
+    ORFik
 Depends:
     R (>= 4.0.0)
