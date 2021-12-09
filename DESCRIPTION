@@ -56,8 +56,8 @@ Imports:
     multitaper,
     tidyr,
     magrittr,
-    ORFik
-    broom
-    tibble
+    ORFik,
+    broom,
+    tibble,
 Depends:
     R (>= 4.0.0)

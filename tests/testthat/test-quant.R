@@ -20,7 +20,7 @@ test_that("test optimisation of quantification works",
   expect_true(cor(compdf$ribo, log2(compdf$expr)) > 0.66)
 
 
-  ftests <- ftest_orfs(psites %>% head(10000), chr22_anno)
+  ftests <- ftest_orfs(psites %>% head(10000), chr22_anno, n_cores=1)
   expect_equal(colnames(ftests), c("orf_id", "spec_coef", "p.value"))
 }
 )
