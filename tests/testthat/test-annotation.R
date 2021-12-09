@@ -1,21 +1,22 @@
 test_that("loading annotation works", 
-{
+#(
+ {
   #first, let's load up some test data
-  anno_file <- 'test.gc32.gtf'
-  if(!file.exists(anno_file)){
+  anno_file <- here::here('test.gc32.gtf')
+  #if(!file.exists(anno_file)){
     library(AnnotationHub)
     ah <- AnnotationHub()
     gencode32 <- ah[['AH75191']]
     seqlevels(gencode32)<-'chr22'
     rtracklayer::export(gencode32, anno_file, format='GTF')
-  }
-  fafile <- 'chr22.fa'
+  #}
+  fafile <- here::here('chr22.fa')
   library(BSgenome.Hsapiens.UCSC.hg38)
-  if(!file.exists(fafile)){
+  #if(!file.exists(fafile)){
     seq <- Biostrings::DNAStringSet(BSgenome.Hsapiens.UCSC.hg38[['chr22']])
    Biostrings::writeXStringSet(
     seq, fafile)
-  }
+  #}
   # file.copy(fafile, ".")
   # system("gunzip -f chr22.fa.gz")
   # fafile <- "chr22.fa"
