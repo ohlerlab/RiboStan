@@ -128,6 +128,8 @@ get_incl_max_offsets <- function(rpfs, anno) {
     `==`(0)
   stopifnot(uniqueoffsetsfound)
   #
+  best_offsets <- best_offsets%>%
+    select(-gain,-loss,-net,-twind)
   best_offsets
 }
 
