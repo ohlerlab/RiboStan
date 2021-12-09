@@ -8,7 +8,7 @@ test_that("loading annotation works",
     ah <- AnnotationHub()
     gencode32 <- ah[['AH75191']]
     seqlevels(gencode32)<-'chr22'
-    rtracklayer::export(gencode32, anno_file, format='GTF')
+    suppressWarnings({rtracklayer::export(gencode32, anno_file, format='GTF')})
   #}
   fafile <- here::here('chr22.fa')
   library(BSgenome.Hsapiens.UCSC.hg38)

@@ -29,6 +29,7 @@ Config/testthat/edition: 3
 biocViews: RiboSeq, Sequencing, QualityControl, DataImport, GenomeAnnotation,
   Transcriptomics, Software, Coverage, RNASeq
 Suggests:
+    here,
     knitr,
     rmarkdown,
     BSgenome.Hsapiens.UCSC.hg38,

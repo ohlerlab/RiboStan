@@ -87,13 +87,12 @@ ftest_orfs <- function(psites, anno, n_cores=1) {
       coverage(out)
     }
   #
-  ncores <- parallel::detectCores()
   psitecov <- psitecov[sum(psitecov > 0) > 1]
   # now run multitaper tests on our data using multiple
   # cores if available
   message("running multitaper tests, this will be slow for a full dataset...")
   spec_tests <- psitecov %>% 
-    parallel::mclapply(F = ftestvect, mc.cores = ncores)
+    parallel::mclapply(F = ftestvect, mc.cores = n_cores)
   # now format the output
   spec_test_df <- spec_tests %>%
     simplify2array() %>%
