@@ -2,20 +2,17 @@ test_that("estimating per-codon occupanies works",
 {
   #first, let's load up some test data
   anno_file <- 'test.gc32.gtf'
-  if(!file.exists(anno_file)){
     library(AnnotationHub)
     ah <- AnnotationHub()
     gencode32 <- ah[['AH75191']]
     seqlevels(gencode32)<-'chr22'
     rtracklayer::export(gencode32, anno_file, format='GTF')
-  }
   fafile <- 'chr22.fa'
   library(BSgenome.Hsapiens.UCSC.hg38)
-  if(!file.exists(fafile)){
     seq <- Biostrings::DNAStringSet(BSgenome.Hsapiens.UCSC.hg38[['chr22']])
+   names(seq) <- 'chr22'
    Biostrings::writeXStringSet(
     seq, fafile)
-  }
   chr22_anno <- load_annotation(anno_file, fafile)
   data(rpfs)
   data(offsets_df)
