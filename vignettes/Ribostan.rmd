@@ -4,7 +4,7 @@ package: "Ribostan"
 author: "Dermot Harnett"
 output: 
   BiocStyle::html_document
-vignette: 
+vignette: >
   %\VignetteIndexEntry{Ribostan}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}  
@@ -114,7 +114,7 @@ covgrs = list(sample1=rpfs)
 metacodondf <- get_metacodon_profs(covgrs, chr22_anno)
 kl_df<-get_kl_df(metacodondf, chr22_anno)
 kl_offsets <- select_offsets(kl_df)
-kl_offsets%>%select(p_offset,length=nreadlen)%>%
+kl_offsets%>%dplyr::select(p_offset,length=nreadlen)%>%
   readr::write_tsv('offsets_rustvar.tsv')
 #
 kl_div_plot <- plot_kl_dv(kl_df, kl_offsets)
@@ -141,7 +141,7 @@ ritpms <- get_ritpms(psites, chr22_anno)
 #and get these at the gene level (ignoring uORFs)
 gritpms = gene_level_expr(ritpms, chr22_anno)
 #and remove multimapped alignments from the psites
-psites <- psites%>%subset(orf%in%names(chr22_anno$trspacecds))
+psites <- psites[psites$orf%in%names(chr22_anno$trspacecds)]
 psites <- sample_cov_gr(psites, chr22_anno, ritpms)
 
 knitr::kable(tibble::enframe(head(ritpms)))

@@ -261,6 +261,7 @@ get_codon_occs <- function(psites, offsets_df,
 #' )
 #' orf_elong <- get_orf_elong(chr22_anno, rust_codon_occ_df)
 #' gn_elong <- gene_level_elong(orf_elong, ritpms, anno)
+#' @export
 get_orf_elong <- function(anno, codon_model) {
   #
   cdsgrl <- anno$cdsgrl
@@ -332,6 +333,7 @@ get_orf_elong <- function(anno, codon_model) {
 #' the mean elongation rate over all the
 #' genes transcripts weighted by transcript abundance
 #' @seealso \code{\link{get_cds_reads}}, \code{\link{get_readlens}}
+#' @export
 
 
 gene_level_elong <- function(tr_elong, ritpms, anno, exclude_uORFs = TRUE) {

@@ -343,7 +343,7 @@ get_readgr <- function(ribobam, anno, offsets_df = NULL, startstop = FALSE, stri
   }
   cov <- read_ribobam(ribobam, which)
   if (!is.null(offsets_df)) {
-    cov <- gRsamtools::get_psite_gr(cov, offsets_df, anno)
+    cov <- Rsamtools::get_psite_gr(cov, offsets_df, anno)
   } else {
     cov <- get_cds_reads(cov, anno)
   }
@@ -555,6 +555,7 @@ get_ritpms <- function(psites, anno) {
 #' @param anno An annotation object with a gene-transcript table
 #' @param ritpms a vector of ribosoome densities
 #' @return a vector of normalized footprint densities
+#' @export
 
 sample_cov_gr <- function(psites, anno, ritpms) {
   spmat <- get_read_spmat(psites, anno)
@@ -636,6 +637,7 @@ gene_level_expr <- function(ripms, anno) {
 #' @details The Ribosome densities are saved in salmon format
 #' @export
 #' @examples
+#' \dontrun{iget_exprfile(ribobam, ribofasta, outfile)}
 
 
 get_exprfile <- function(ribobam, ribofasta, outfile) {

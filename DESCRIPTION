@@ -57,5 +57,7 @@ Imports:
     tidyr,
     magrittr,
     ORFik
+    broom
+    tibble
 Depends:
     R (>= 4.0.0)

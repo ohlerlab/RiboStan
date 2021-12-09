@@ -1,5 +1,5 @@
 ^.*\.Rproj$
 ^\.Rproj\.user$
-testing.R
+raw-data/testing.R
 raw-data/create_testdata.R
 raw-data/othertests.R
