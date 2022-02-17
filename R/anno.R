@@ -12,7 +12,7 @@
 #' @importFrom GenomeInfoDb seqinfo seqlevels<- seqinfo<- seqnames<-
 #' @importFrom BiocGenerics intersect setdiff unlist table union mean order 
 #' @importFrom Biostrings subseq codons oligonucleotideFrequency nchar
-#' @importFrom GenomicRanges GRanges split GenomicRangesList strand mcols width
+#' @importFrom GenomicRanges GRanges split strand mcols width
 #' @importFrom GenomicRanges strand<- mcols<- start resize
 #' @importFrom GenomicRanges findOverlaps invertStrand seqnames end
 #' @importFrom GenomicRanges coverage shift
