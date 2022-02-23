@@ -58,7 +58,7 @@ data(rpfs)
 data(offsets_df)
 psites <- get_psite_gr(rpfs, offsets_df, chr22_anno)
 rust_codon_occ_df <- get_codon_occs(psites, offsets_df, chr22_anno,
-  n_genes = 1000, method = "RUST"
+  n_genes = 200, method = "RUST"
 )
 }
 \author{

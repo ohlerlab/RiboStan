@@ -16,7 +16,7 @@ add_cor_offset <- function(rpfs, anno) {
   cds_prestop_st <- anno$cds_prestop_st %>% unlist()
 
   rpfs <- rpfs %>%
-    as("GRanges") %>%
+    methods::as("GRanges") %>%
     addphase(cdsstarts) %>%
     {
       .$startoffset <- cdsstarts[as.vector(seqnames(.))] + .$phase - start(.)

@@ -145,7 +145,7 @@ get_cds_reads <- function(cov, anno) {
   sharedseqnames <- unique(seqnames(trspacecds)) %>%
     unlist() %>%
     intersect(unique(seqnames(cov)))
-  cov <- cov %>% keepSeqlevels(sharedseqnames, pruning = "coarse")
+  cov <- cov %>% keepSeqlevels(sharedseqnames, pruning.mode = "coarse")
   seqlevels(cov) <- seqlevels(trspacecds)
   seqinfo(cov) <- seqinfo(trspacecds)
   cov <- cov %>% IRanges::subsetByOverlaps(trspacecds)
@@ -343,7 +343,7 @@ get_readgr <- function(ribobam, anno, offsets_df = NULL, startstop = FALSE, stri
   }
   cov <- read_ribobam(ribobam, which)
   if (!is.null(offsets_df)) {
-    cov <- Rsamtools::get_psite_gr(cov, offsets_df, anno)
+    cov <- get_psite_gr(cov, offsets_df, anno)
   } else {
     cov <- get_cds_reads(cov, anno)
   }

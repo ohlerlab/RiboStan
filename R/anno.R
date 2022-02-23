@@ -72,7 +72,7 @@ resize_grl_startfix <- function(grl, width) {
   # vector showing location of the new 3' end of each transcript
   newends <- cumsum(elementNROWS(grl))
   # vector with the amount we need to trim each new 3' end by
-  iList <- IRanges:::IntegerList(as.list(elementNROWS(grl)))
+  iList <- IRanges::IntegerList(as.list(elementNROWS(grl)))
   endtrims <- trim[iList]@unlistData
   # finally, use these to trim
   grl@unlistData[newends] <- resize(
@@ -401,7 +401,7 @@ width1grs <- function(gr) {
   narrow <- {
     GRanges(
       rep(seqnames(broad), width(broad)),
-      IRanges(narrowstarts, w = 1)
+      IRanges(narrowstarts, width = 1)
     )
   }
   binds <- rep(seq_along(broad), width(broad))
@@ -424,7 +424,8 @@ width1grs <- function(gr) {
 #' that ribostan uses
 convert_gtf <- function(anno, keep_cols)
 {
-  genedf <- mcols(anno)%>%as.data.frame%>%filter(type=='gene')%>%
+  genedf <- mcols(anno)%>%as.data.frame%>%
+    filter(type=='gene')%>%
     mutate(gene_id=ID%>%str_replace('GeneID:',''))%>%
     select(type,gene_id,gene_name=Name)
   trdf <- mcols(anno)%>%as.data.frame%>%filter(type=='mRNA')%>%
@@ -532,11 +533,11 @@ load_annotation <- function(gtf, fafile, add_uorfs = TRUE,
   nonempty = intersect(toremove,seqnames(anno))
   message(str_interp(paste0('removing ${length(nonempty)} non empty seqlevels',
     ' that are absent from the fasta')))
-  anno <- anno %>% GenomeInfoDb::dropSeqlevels(nonempty,pruning='coarse')
+  anno <- anno %>% GenomeInfoDb::dropSeqlevels(nonempty,pruning.mode='coarse')
   empty = setdiff(toremove,seqnames(anno))
   message(str_interp(paste0('removing ${length(empty)} non empty seqlevels',
     ' that are absent from the fasta')))
-  anno <- anno %>% GenomeInfoDb::dropSeqlevels(empty,pruning='coarse')
+  anno <- anno %>% GenomeInfoDb::dropSeqlevels(empty,pruning.mode='coarse')
   seqinfo(anno) <- seqinfo(fafileob)[as.vector(seqlevels(anno))]
   seqinfo(anno)@is_circular <- seqinfo(anno)@seqnames %in% DEFAULT_CIRC_SEQS
   #

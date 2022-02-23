@@ -150,11 +150,11 @@ get_metacodon_profs <- function(covgrs, anno, n_wind_l_ext = 45) {
   lapplyfunc <- if('paralell'%in%installed.packages()){
     rust_roel <- parallel::mclapply(
       mc.cores = detectCores(), cdsfpcovlist, cds_codons = cds_codons,
-      F = get_cov_rust_scores
+      FUN = get_cov_rust_scores
   )
   }else{
     rust_roel <- lapply(cdsfpcovlist, cds_codons = cds_codons,
-      F = get_cov_rust_scores
+      FUN = get_cov_rust_scores
   )
   }
   
@@ -286,7 +286,7 @@ plot_kl_dv <- function(kl_df, kl_offsets, selreadlens = 27:32) {
     {
       qplot(data = ., x = position, y = KL) +
         theme_bw() +
-        facet_grid(nreadlen ~ sample,scale='free_y') +
+        facet_grid(nreadlen ~ sample,scales = 'free_y') +
         scale_y_continuous("RUST KL divergence") +
         scale_x_continuous("5 read position relative to codon ") +
         geom_vline(

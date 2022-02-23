@@ -47,7 +47,6 @@ Imports:
     GenomicFeatures,
     GenomicAlignments,
     GenomeInfoDb,
-    GenomicFiles,
     GenomicRanges,
     IRanges,
     S4Vectors,
