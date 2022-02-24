@@ -110,7 +110,7 @@ get_sitedf <- function(psite_cov, anno) {
     split(., .$orf_id) %>%
     lapply(function(x) lead(x$codon)) %>%
     unlist()
-  sitedf %>% select(orf_id, p_codon, a_codon, count)
+  sitedf %>% select('orf_id', 'p_codon', 'a_codon', 'count')
 }
 
 #' Estimate per codon occupancies
@@ -168,9 +168,9 @@ get_codon_occs <- function(psites, offsets_df,
   sitedf <- get_sitedf(psitecov, anno)
   #
   sitedf <- sitedf %>%
-    group_by(orf_id) %>%
-    mutate(trmean = mean(count))
-  sitedf <- sitedf %>% filter(trmean != 0)
+    group_by(.data$orf_id) %>%
+    mutate(trmean = mean(.data$count))
+  sitedf <- sitedf %>% filter(.data$trmean != 0)
   #
   if (method == "linear") {
     nbfit <- glm.nb(
@@ -180,14 +180,11 @@ get_codon_occs <- function(psites, offsets_df,
     #
     codon_occ_df <- broom::tidy(nbfit) %>%
       as.data.frame() %>%
-      mutate(codon = term %>% str_replace("[pa]_codon", "")) %>%
-      mutate(position = term %>% str_extract("^[pa]_codon")) %>%
-      mutate(lower = estimate - 1.96 * std.error) %>%
-      mutate(upper = estimate + 1.96 * std.error)
+      mutate(codon = .data$term %>% str_replace("[pa]_codon", "")) %>%
+      mutate(position = .data$term %>% str_extract("^[pa]_codon")) %>%
+      mutate(lower = .data$estimate - 1.96 * .data$std.error) %>%
+      mutate(upper = .data$estimate + 1.96 * .data$std.error)
     codon_occ_df
-    # codon_occ_df%>%filter(position=='p_codon')%>%
-    # 	mutate(comp=codonstrengths[codon])%>%
-    # 	{txtplot(.$comp,exp(.$estimate))}
   } else if (method == "RUST_glm") {
     sitedf <- sitedf %>% mutate(rust = count > trmean, rtrmean = mean(rust))
     rustfit <- glm(
@@ -197,34 +194,36 @@ get_codon_occs <- function(psites, offsets_df,
     )
     codon_occ_df <- broom::tidy(rustfit) %>%
       as.data.frame() %>%
-      mutate(codon = term %>% str_replace("[pa]_codon", "")) %>%
-      mutate(position = term %>% str_extract("^[pa]_codon")) %>%
-      mutate(lower = estimate - 1.96 * std.error) %>%
-      mutate(upper = estimate + 1.96 * std.error)
+      mutate(codon = .data$term %>% str_replace("[pa]_codon", "")) %>%
+      mutate(position = .data$term %>% str_extract("^[pa]_codon")) %>%
+      mutate(lower = .data$estimate - 1.96 * .data$std.error) %>%
+      mutate(upper = .data$estimate + 1.96 * .data$std.error)
   } else if (method == "RUST") {
-    sitedf <- sitedf %>% mutate(rust = count > trmean, rtrmean = mean(rust))
+    sitedf <- sitedf %>% mutate(rust = .data$count > .data$trmean,
+        rtrmean = mean(rust))
     p_ests <- sitedf %>%
-      group_by(p_codon) %>%
-      summarise(estimate = sum(rust) / sum(trmean)) %>%
+      group_by(.data$p_codon) %>%
+      summarise(estimate = sum(.data$rust) / sum(.data$trmean)) %>%
       setNames(c("codon", "estimate")) %>%
       mutate(position = "p_codon")
     a_ests <- sitedf %>%
-      group_by(p_codon) %>%
-      summarise(estimate = sum(rust) / sum(trmean)) %>%
+      group_by(.data$p_codon) %>%
+      summarise(estimate = sum(.data$rust) / sum(.data$trmean)) %>%
       setNames(c("codon", "estimate")) %>%
       mutate(position = "a_codon")
     codon_occ_df <- bind_rows(p_ests, a_ests)
-    codon_occ_df <- codon_occ_df %>% mutate(upper = NA, lower = NA, p.value = NA)
+    codon_occ_df <- codon_occ_df %>% 
+      mutate(upper = NA, lower = NA, p.value = NA)
     codon_occ_df
   } else {
     p_ests <- sitedf %>%
-      group_by(p_codon) %>%
-      summarise(estimate = sum(count) / sum(trmean)) %>%
+      group_by(.data$p_codon) %>%
+      summarise(estimate = sum(.data$count) / sum(.data$trmean)) %>%
       setNames(c("codon", "estimate")) %>%
       mutate(position = "p_codon")
     a_ests <- sitedf %>%
-      group_by(p_codon) %>%
-      summarise(estimate = sum(count) / sum(trmean)) %>%
+      group_by(.data$p_codon) %>%
+      summarise(estimate = sum(.data$count) / sum(.data$trmean)) %>%
       setNames(c("codon", "estimate")) %>%
       mutate(position = "a_codon")
     codon_occ_df <- bind_rows(p_ests, a_ests)
@@ -233,7 +232,7 @@ get_codon_occs <- function(psites, offsets_df,
   }
   codon_occ_df %>%
     ungroup() %>%
-    select(codon, position, estimate, upper, lower, p.value)
+    select('codon', 'position', 'estimate', 'upper', 'lower', 'p.value')
 }
 
 
@@ -298,12 +297,13 @@ get_orf_elong <- function(anno, codon_model) {
     poselongs <- lapply(positions, function(ipos) {
       poselong <- codonfreqdf %>%
         left_join(
-          codon_model %>% filter(position == ipos) %>%
-            select(codon, estimate),
+          codon_model %>% filter(position == .data$ipos) %>%
+            select('codon', 'estimate'),
           by = "codon"
         ) %>%
         group_by(orf_id) %>%
-        summarise(estimate = weighted.mean(estimate, freq, na.rm = TRUE))
+        summarise(estimate = 
+          weighted.mean(.data$estimate, .data$freq, na.rm = TRUE))
       poselong
     })
     tr_elong <- poselongs %>%
@@ -347,15 +347,16 @@ gene_level_elong <- function(tr_elong, ritpms, anno, exclude_uORFs = TRUE) {
   #
   gn_elong <- tr_elong %>%
     left_join(trgiddf, by = "orf_id") %>%
-    group_by(gene_id) %>%
+    group_by(.data$gene_id) %>%
     left_join(tibble::enframe(ritpms, "orf_id", "ritpm"),
       by = "orf_id"
     ) %>%
     ungroup() %>%
-    mutate(ritpm = replace_na(ritpm, min(ritpm, na.rm = TRUE) * 0.01)) %>%
-    group_by(gene_id) %>%
+    mutate(ritpm = 
+      replace_na(.data$ritpm, min(.data$ritpm, na.rm = TRUE) * 0.01)) %>%
+    group_by(.data$gene_id) %>%
     summarise(mean_occ = weighted.mean(mean_occ, ritpm, na.rm = TRUE))
   gn_elong %>%
     ungroup() %>%
-    select(gene_id, mean_occ)
+    select('gene_id', 'mean_occ')
 }

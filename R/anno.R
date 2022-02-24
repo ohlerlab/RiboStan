@@ -39,6 +39,7 @@ NULL
 #'  5' to 3'
 
 order_grl_st <- function(grl) {
+  stopifnot(length(grl)>0)
   order(start(grl) * (((strand(grl) != "-") + 1) * 2 - 3))
 }
 
@@ -422,26 +423,28 @@ width1grs <- function(gr) {
 #' @param keep_cols the columns to keep in the final annotation
 #' @return a granges object with just the exon and CDS elements 
 #' that ribostan uses
-convert_gtf <- function(anno, keep_cols)
-{
+convert_gtf <- function(anno, keep_cols){
   genedf <- mcols(anno)%>%as.data.frame%>%
-    filter(type=='gene')%>%
-    mutate(gene_id=ID%>%str_replace('GeneID:',''))%>%
-    select(type,gene_id,gene_name=Name)
-  trdf <- mcols(anno)%>%as.data.frame%>%filter(type=='mRNA')%>%
-    mutate(transcript_id=ID)%>%
-    mutate(gene_id=Parent%>%str_replace('GeneID:',''))%>%
-    mutate(gene_name=Parent%>%str_replace('GeneID:',''))%>%
-    mutate(type='transcript')%>%
-    select(type,gene_name,gene_id,transcript_id,transcript_name=Name)
-  exondf <- mcols(anno)%>%as.data.frame%>%filter(type=='exon')%>%
-    mutate(exon_id=Name)%>%
-    mutate(transcript_id=Parent%>%stringr::str_replace_all('TxID:',''))%>%
-    select(type,exon_id,transcript_id,exon_name=Name)
+    filter(.data$type=='gene')%>%
+    mutate('gene_id'=.data$ID%>%str_replace('GeneID:',''))%>%
+    select('type','gene_id','gene_name'='Name')
+  trdf <- mcols(anno)%>%as.data.frame%>%filter(.data$type=='mRNA')%>%
+    mutate('transcript_id'='ID')%>%
+    mutate('gene_id'=.data$Parent%>%str_replace('GeneID:',''))%>%
+    mutate('gene_name'=.data$Parent%>%str_replace('GeneID:',''))%>%
+    mutate('type'='transcript')%>%
+    select('type','gene_name','gene_id','transcript_id',
+      'transcript_name'='Name')
+  exondf <- mcols(anno)%>%as.data.frame%>%filter(.data$type=='exon')%>%
+    mutate('exon_id'='Name')%>%
+    mutate('transcript_id'=
+      .data$Parent%>%stringr::str_replace_all('TxID:',''))%>%
+    select('type','exon_id','transcript_id','exon_name'='Name')
   #transcript_id is multiple
-  cds_df <- mcols(anno)%>%as.data.frame%>%filter(type=='CDS')%>%
-    mutate(transcript_id=Parent%>%stringr::str_replace_all('TxID:',''))%>%
-    select(type,transcript_id)
+  cds_df <- mcols(anno)%>%as.data.frame%>%
+    filter(.data$type=='CDS')%>%
+    mutate('transcript_id'=Parent%>%stringr::str_replace_all('TxID:',''))%>%
+    select('type','transcript_id')
   allcds <- anno%>%subset(type=='CDS')
   parentsplit <- stringr::str_split(allcds$Parent,',')
   parentnum <- parentsplit%>%as("CharacterList")%>%elementNROWS
@@ -497,17 +500,20 @@ convert_gtf <- function(anno, keep_cols)
 #' system2("gunzip -f chr22.fa.gz")
 #' fafile <- "chr22.fa"
 #' anno <- load_annotation(gtf, fafile)
-load_annotation <- function(gtf, fafile, add_uorfs = TRUE,
-                            ignore_orf_validity = FALSE,
-                            keep_cols = c("gene_id", "transcript_id", "gene_name", "type"),
-                            DEFAULT_CIRC_SEQS=NULL,
-                            findUORFs_args = c(minimumLength=0)
-                          ) {
+load_annotation <- function(
+    gtf, fafile, add_uorfs = TRUE,
+    ignore_orf_validity = FALSE,
+    keep_cols = 
+      c("gene_id", "transcript_id", "gene_name", "type"),
+    DEFAULT_CIRC_SEQS=NULL,
+    findUORFs_args = c(minimumLength=0)
+    ) {
   if(is.null(DEFAULT_CIRC_SEQS)){
-    DEFAULT_CIRC_SEQS <- unique(c("chrM","MT","MtDNA","mit","Mito","mitochondrion",
-                          "dmel_mitochondrion_genome","Pltd","ChrC","Pt","chloroplast",
-                          "Chloro","2micron","2-micron","2uM",
-                          "Mt", "NC_001879.2", "NC_006581.1","ChrM","mitochondrion_genome"))
+    DEFAULT_CIRC_SEQS <- unique(
+      c("chrM","MT","MtDNA","mit","Mito","mitochondrion",
+      "dmel_mitochondrion_genome","Pltd","ChrC","Pt","chloroplast",
+      "Chloro","2micron","2-micron","2uM",
+      "Mt", "NC_001879.2", "NC_006581.1","ChrM","mitochondrion_genome"))
   }
   anno <- rtracklayer::import(gtf)
   ancols <- colnames(mcols(anno))
@@ -546,7 +552,7 @@ load_annotation <- function(gtf, fafile, add_uorfs = TRUE,
     .[, c("gene_id", "transcript_id")] %>%
     as.data.frame() %>%
     distinct() %>%
-    filter(!is.na(transcript_id))
+    filter(!is.na(.data$transcript_id))
   trgiddf$orf_id <- trgiddf$transcript_id
   # get the cds not including stop codons, possibly filtering for valid orfs
   cdsgrl <- get_cdsgrl(anno, fafileob, ignore_orf_validity)
@@ -626,8 +632,8 @@ load_annotation <- function(gtf, fafile, add_uorfs = TRUE,
     sum() %>%
     tibble::enframe("transcript_id", "width") %>%
     left_join(trgiddf, "transcript_id") %>%
-    group_by(gene_id) %>%
-    arrange(-width) %>%
+    group_by(.data$gene_id) %>%
+    arrange(-.data$width) %>%
     dplyr::slice(1) %>%
     .$transcript_id
   #
@@ -668,7 +674,7 @@ subset_annotation <- function(anno, orfs) {
   newanno$cdsgrl <- anno$cdsgrl[orfs]
   orftrs <- unique(unlist(fmcols(anno$cdsgrl[orfs], transcript_id)))
   newanno$exonsgrl <- anno$exonsgrl[orftrs]
-  newanno$trgiddf <- anno$trgiddf %>% filter(orf_id %in% orfs)
+  newanno$trgiddf <- anno$trgiddf %>% filter(.data$orf_id %in% orfs)
   newanno$fafileob <- anno$fafileob
   newanno$longtrs <- anno$longtrs %>% intersect(orftrs)
   newanno$uORF <- anno$uORF[orfs]
@@ -810,7 +816,7 @@ make_ext_fasta <- function(gtf, fasta, outfasta, fpext = 50, tpext = 50) {
 
   trcdscoordsfile <- paste0(outprefix, "_trcds.tsv")
   as.data.frame(unlist(cds_exptrspc)) %>%
-    select(seqnames, start, end) %>%
+    select('seqnames', 'start', 'end') %>%
     write_tsv(trcdscoordsfile)
   message(normalizePath(trcdscoordsfile, mustWork = TRUE))
 

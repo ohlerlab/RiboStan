@@ -274,11 +274,11 @@ get_psite_gr <- function(rpfs, offsets_df, anno) {
 
   rl_phs_ <- mcols(psites)[, c("phase", "readlen")] %>%
     as.data.frame() %>%
-    group_by(phase, readlen) %>%
+    group_by(.data$phase, .data$readlen) %>%
     tally()
   shiftdf <- rl_phs_ %>%
-    group_by(readlen) %>%
-    mutate(shft = rank(-n) - 1) %>%
+    group_by(.data$readlen) %>%
+    mutate(shft = rank(-.data$n) - 1) %>%
     as.data.frame()
 
   phaseshifts <- merge(
@@ -618,9 +618,9 @@ gene_level_expr <- function(ripms, anno) {
   )
   #
   gn_expr <- gn_expr %>%
-    group_by(gene_id) %>%
-    summarise(expr = sum(replace_na(ritpm, 0)))
-  gn_expr %>% select(gene_id, expr)
+    group_by(.data$gene_id) %>%
+    summarise(expr = sum(replace_na(.data$ritpm, 0)))
+  gn_expr %>% select('gene_id', 'expr')
 }
 
 
@@ -664,11 +664,12 @@ get_exprfile <- function(ribobam, ribofasta, outfile) {
     width() %>%
     setNames(names(anno$trspacecds)) %>%
     tibble::enframe("Name", "Length") %>%
-    mutate(EffectiveLength = Length)
+    mutate(EffectiveLength = .data$Length)
   output <- cdslens %>%
     left_join(ritpmdf) %>%
     left_join(counts)
   #
-  output <- output %>% select(Name, Length, EffectiveLength, ritpm, NumReads)
+  output <- output %>% 
+    select('Name', 'Length', 'EffectiveLength', 'ritpm', 'NumReads')
   output %>% write_tsv(outfile)
 }

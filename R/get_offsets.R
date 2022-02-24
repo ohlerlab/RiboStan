@@ -65,35 +65,36 @@ get_incl_max_offsets <- function(rpfs, anno) {
     mcols(.) %>%
     .[, c("startoffset", "score", "readlen", "phase")] %>%
     as.data.frame() %>%
-    group_by(phase, readlen, startoffset) %>%
-    tally(wt = score) %>%
-    arrange(startoffset) %>%
-    group_by(phase, readlen) %>%
-    mutate(gain = cumsum(n)) %>%
-    select(p_offset = startoffset, phase, gain)
+    group_by(.data$phase, .data$readlen, .data$startoffset) %>%
+    tally(wt = .data$score) %>%
+    arrange(.data$startoffset) %>%
+    group_by(.data$phase, .data$readlen) %>%
+    mutate(gain = cumsum(.data$n)) %>%
+    select(p_offset = 'startoffset', 'phase', 'gain')
   # data frame with numbers of reads lost at a specific offset
   lossdf <- rpfs %>%
     subset((.$endoffset < (readlen - 3)) & (.$endoffset > 3)) %>%
     mcols(.) %>%
     .[, c("endoffset", "score", "readlen", "phase")] %>%
     as.data.frame() %>%
-    group_by(phase, readlen, endoffset) %>%
-    tally(wt = score) %>%
-    arrange(endoffset) %>%
-    group_by(phase, readlen) %>%
-    mutate(loss = cumsum(n)) %>%
-    select(p_offset = endoffset, phase, loss) %>%
-    mutate(p_offset = p_offset + 3)
+    group_by(.data$phase, .data$readlen, .data$endoffset) %>%
+    tally(wt = .data$score) %>%
+    arrange(.data$endoffset) %>%
+    group_by(.data$phase, .data$readlen) %>%
+    mutate(loss = cumsum(.data$n)) %>%
+    select('p_offset' = 'endoffset', 'phase', 'loss') %>%
+    mutate('p_offset' = .data$p_offset + 3)
   # for a given offset, our gain is the start overlappers whose
   # offset is that or less, minus the stop guys whose offset is
   # less than that
   #
   netdf <- gaindf %>%
     full_join(lossdf, by = c("readlen", "p_offset", "phase")) %>%
-    mutate(net = replace_na(gain, 0) - replace_na(loss, 0)) %>%
-    group_by(readlen) %>%
-    arrange(readlen, p_offset) %>%
-    filter(!is.na(net))
+    mutate(net = 
+      replace_na(.data$gain, 0) - replace_na(.data$loss, 0)) %>%
+    group_by(.data$readlen) %>%
+    arrange(.data$readlen, .data$p_offset) %>%
+    filter(!is.na(.data$net))
   #
   readlens <- rpfs$readlen %>% unique()
   #
@@ -106,30 +107,30 @@ get_incl_max_offsets <- function(rpfs, anno) {
       )
     }) %>%
     bind_rows() %>%
-    filter((p_offset %% 3) == 0)
+    filter((.data$p_offset %% 3) == 0)
   netdf <- allpos %>% left_join(netdf,
     by = c("readlen", "p_offset", "phase")
   )
   netdf <- netdf %>%
-    mutate(net = replace_na(net, 0)) %>%
-    mutate(twind = net + lag(net) + lead(net))
+    mutate(net = replace_na(.data$net, 0)) %>%
+    mutate(twind = .data$net + lag(.data$net) + lead(.data$net))
   netdf <- netdf %>%
-    group_by(readlen) %>%
-    filter(max(net) > 32)
+    group_by(.data$readlen) %>%
+    filter(max(.data$net) > 32)
   best_offsets <- netdf %>%
-    filter(!is.na(twind)) %>%
-    group_by(readlen) %>%
-    dplyr::slice((which.max(twind) - 1):(which.max(twind) + 1))
+    filter(!is.na(.data$twind)) %>%
+    group_by(.data$readlen) %>%
+    dplyr::slice((which.max(.data$twind) - 1):(which.max(.data$twind) + 1))
   #
   uniqueoffsetsfound <- best_offsets %>%
-    group_by(readlen, phase) %>%
+    group_by(.data$readlen, .data$phase) %>%
     filter(n() > 1) %>%
     nrow() %>%
     `==`(0)
   stopifnot(uniqueoffsetsfound)
   #
   best_offsets <- best_offsets%>%
-    select(-gain,-loss,-net,-twind)
+    select(-'gain',-'loss',-'net',-'twind')
   best_offsets
 }
 

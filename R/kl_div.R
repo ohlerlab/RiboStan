@@ -162,9 +162,10 @@ get_metacodon_profs <- function(covgrs, anno, n_wind_l_ext = 45) {
   # of RUST paper
   metacodondf <- bind_rows(rust_roel, .id = "sample")
   #
-  metacodondf <- mutate(metacodondf, position = position - 1 - (n_wind_l_ext))
-  metacodondf <- filter(metacodondf, !codon %in% c("TAG", "TAA", "TGA"))
-  metacodondf <- mutate(metacodondf, count = ro_cl / re_c)
+  metacodondf <- mutate(metacodondf, position = 
+      .data$position - 1 - (.data$n_wind_l_ext))
+  metacodondf <- filter(metacodondf, !.data$codon %in% c("TAG", "TAA", "TGA"))
+  metacodondf <- mutate(metacodondf, count = .data$ro_cl / .data$re_c)
   metacodondf$nreadlen <- metacodondf$readlen %>% as.numeric()
   metacodondf
 }
@@ -188,9 +189,11 @@ get_metacodon_profs <- function(covgrs, anno, n_wind_l_ext = 45) {
 #' @export
 get_kl_df <- function(metacodondf, anno) {
   metacodondf %>%
-    group_by(sample, nreadlen, position) %>%
-    mutate(ro_cl = ro_cl / sum(ro_cl), re_c = re_c / sum(re_c)) %>%
-    summarise(KL = sum(ro_cl * log2(ro_cl / re_c)), .groups = "keep")
+    group_by(.data$sample, .data$nreadlen, .data$position) %>%
+    mutate(ro_cl = .data$ro_cl / sum(.data$ro_cl),
+      re_c = .data$re_c / sum(.data$re_c)) %>%
+    summarise(KL = sum(.data$ro_cl * log2(.data$ro_cl / .data$re_c)),
+       .groups = "keep")
 }
 
 #' Get the most frequent element from a numeric vector
@@ -239,17 +242,17 @@ most_freq <- function(x) {
 select_offsets <- function(kl_df, method = "a_max") {
   if (method == "a_max") {
     kl_offsets <- kl_df %>%
-      group_by(sample, nreadlen, position) %>%
-      summarise(sumKL = sum(KL), .groups = "keep") %>%
-      filter(position < -6) %>%
-      filter(position > -(nreadlen - 6)) %>%
-      group_by(sample, nreadlen) %>%
-      dplyr::slice(which.max(sumKL)) %>%
-      mutate(p_offset = -(position + 3))
+      group_by(.data$sample, .data$nreadlen, .data$position) %>%
+      summarise(sumKL = sum(.data$KL), .groups = "keep") %>%
+      filter(.data$position < -6) %>%
+      filter(.data$position > -(.data$nreadlen - 6)) %>%
+      group_by(.data$sample, .data$nreadlen) %>%
+      dplyr::slice(which.max(.data$sumKL)) %>%
+      mutate(p_offset = -(.data$position + 3))
   }
   kl_offsets %>%
     ungroup() %>%
-    select(sample, nreadlen, p_offset)
+    select('sample', 'nreadlen', 'p_offset')
 }
 
 
@@ -275,14 +278,14 @@ plot_kl_dv <- function(kl_df, kl_offsets, selreadlens = 27:32) {
   stopifnot(c("nreadlen", "sample", "p_offset") %in% colnames(kl_offsets))
   #
   if (!is.null(selreadlens)) {
-    kl_offsets <- kl_offsets %>% filter(nreadlen %in% selreadlens)
+    kl_offsets <- kl_offsets %>% filter(.data$nreadlen %in% selreadlens)
   }
   #
   kl_div_plot <- kl_df %>%
-    filter(position < -3) %>%
-    filter(position > -(nreadlen - 6)) %>%
+    filter(.data$position < -3) %>%
+    filter(.data$position > -(.data$nreadlen - 6)) %>%
     # separate(sample,c('fraction','genotype','rep'),remove=F)%>%
-    filter(nreadlen %in% selreadlens) %>% 
+    filter(.data$nreadlen %in% selreadlens) %>% 
     {
       qplot(data = ., x = position, y = KL) +
         theme_bw() +
@@ -326,16 +329,20 @@ plot_kl_dv <- function(kl_df, kl_offsets, selreadlens = 27:32) {
 
 export_codon_dts <- function(metacodondf, kl_offsets) {
   posseldf <- bind_rows(
-    kl_offsets %>% mutate(position = -p_offset + 3, site = "e_site") %>% select(nreadlen, position, site),
-    kl_offsets %>% mutate(position = -p_offset, site = "p_site") %>% select(nreadlen, position, site),
-    kl_offsets %>% mutate(position = -p_offset - 3, site = "a_site") %>% select(nreadlen, position, site),
-    kl_offsets %>% mutate(position = -p_offset - 6, site = "a_p3_site") %>% select(nreadlen, position, site)
+    kl_offsets %>% mutate(position = -.data$p_offset + 3, site = "e_site")
+      %>% select(nreadlen, position, site),
+    kl_offsets %>% mutate(position = -.data$p_offset, site = "p_site")
+      %>% select(nreadlen, position, site),
+    kl_offsets %>% mutate(position = -.data$p_offset - 3, site = "a_site")
+      %>% select(nreadlen, position, site),
+    kl_offsets %>% mutate(position = -.data$p_offset - 6, site = "a_p3_site")
+      %>% select(nreadlen, position, site)
   )
   #
   allcodondt <- metacodondf %>%
     inner_join(posseldf, by = c("position", "nreadlen")) %>%
-    group_by(sample, site, codon) %>%
-    summarise(rust = sum(ro_cl) / sum(re_c)) %>%
+    group_by(.data$sample, .data$site, .data$codon) %>%
+    summarise(rust = sum(.data$ro_cl) / sum(.data$re_c)) %>%
     dplyr::rename("RUST_score" = "rust") %>%
     tidyr::pivot_wider(names_from = "site", values_from = "RUST_score")
   #

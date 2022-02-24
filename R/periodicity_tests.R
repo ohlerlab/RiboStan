@@ -141,9 +141,9 @@ periodicity_filter_uORFs <- function(psites, anno, remove=TRUE, n_cores=1){
   #I guess we can just add to all elements
   if(is.null(mcols(anno$trspacecds)$spec_coef)) mcols(anno$trspacecds)$spec_coef <- NA
   if(is.null(mcols(anno$trspacecds)$p.value)) mcols(anno$trspacecds)$p.value <- NA
-  mcols(anno$trspacecds[ftestdf$orf_id])<- ftestdf%>%select(-orf_id)
+  mcols(anno$trspacecds[ftestdf$orf_id])<- ftestdf%>%select(-'orf_id')
   if(remove){
-    periodic_uORFs <- ftestdf%>%filter(p.value<0.05)%>%.$orf_id
+    periodic_uORFs <- ftestdf%>%filter(.data$p.value<0.05)%>%.$orf_id
     non_periodic_uORFs <- setdiff(uORFs, periodic_uORFs)
     orfs_to_keep <- setdiff(names(anno$trspacecds), non_periodic_uORFs)
     anno <- subset_annotation(anno, orfs_to_keep)
