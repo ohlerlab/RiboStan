@@ -90,6 +90,7 @@ resize_grl_startfix <- function(grl, width) {
 #' @author Dermot Harnett, \email{dermot.p.harnett@gmail.com}
 #'
 #' @param grl GRangesList; a GRangesList object
+#' @param grl the width to resize the GRL to; integer
 #' @return A GRangesList object shortend/lengthened, respecting exon boundaries
 
 resize_grl_endfix <- function(grl, width) {
@@ -106,7 +107,7 @@ resize_grl_endfix <- function(grl, width) {
 #' @author Dermot Harnett, \email{dermot.p.harnett@gmail.com}
 #'
 #' @param grl GRangesList; a GRangesList object
-#' @param width GRangesList; integer/IntegerList to set as new width.
+#' @param gwidth GRangesList; integer/IntegerList to set as new width.
 #' @return A GRangesList object shortend/lengthened, respecting exon boundaries
 
 resize_grl <- function(grl, gwidth, fix = "start", check = TRUE) {
@@ -207,7 +208,7 @@ is_out_of_bounds <- function(gr, si = seqinfo(gr)) {
 #'
 #' @param trspacegr GRanges; an object in transcript space, to be mapped back
 #' to the genome
-#' @param exonsgrl exonsgrl; exons making up the space element is to be mapped
+#' @param exons_grl exonsgrl; exons making up the space element is to be mapped
 #' from.
 #' @return a granges object containing 1 or more element for each
 #' transcript space range, in genome space, corresponding to pieces
@@ -429,7 +430,7 @@ convert_gtf <- function(anno, keep_cols){
     mutate('gene_id'=.data$ID%>%str_replace('GeneID:',''))%>%
     select('type','gene_id','gene_name'='Name')
   trdf <- mcols(anno)%>%as.data.frame%>%filter(.data$type=='mRNA')%>%
-    mutate('transcript_id'='ID')%>%
+    mutate('transcript_id'=.data$ID)%>%
     mutate('gene_id'=.data$Parent%>%str_replace('GeneID:',''))%>%
     mutate('gene_name'=.data$Parent%>%str_replace('GeneID:',''))%>%
     mutate('type'='transcript')%>%
@@ -466,8 +467,11 @@ convert_gtf <- function(anno, keep_cols){
   allexons$transcript_id <- trdf$transcript_id[extrmatch]
   allexons$gene_id <- trdf$gene_id[extrmatch]
   allexons$gene_name <- trdf$gene_name[extrmatch]
-  
   anno <- c(allexons,allcds)
+  stopifnot(!any(is.na(anno$transcript_id)))
+  stopifnot(!any(is.na(anno$gene_name)))
+  stopifnot(!any(is.na(anno$gene_id)))
+  stopifnot(!any(is.na(anno$type)))
   anno
 }
 

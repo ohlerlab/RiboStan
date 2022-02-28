@@ -18,12 +18,12 @@ get_codposdf <- function(orfnames, anno) {
   codposdf <- lapply(bestcdsseq, function(cdsseq) {
     codonmat <- codons(cdsseq) %>%
       {
-        cbind(pos = .@ranges@start, as.data.frame(.))
-      } %>%
-      identity()
+        data.frame(pos = .@ranges@start, codon = as.data.frame(.)$seq)
+      }
   })
+  codposdf[[1]]%>%head
   codposdf <- bind_rows(codposdf, .id = "orf_id")
-  colnames(codposdf) <- c("orf_id", "pos", "codon")
+  colnames(codposdf) <- c("orf_id", "po", "codon")
   codposdf
 }
 
@@ -297,7 +297,7 @@ get_orf_elong <- function(anno, codon_model) {
     poselongs <- lapply(positions, function(ipos) {
       poselong <- codonfreqdf %>%
         left_join(
-          codon_model %>% filter(position == .data$ipos) %>%
+          codon_model %>% filter(position == ipos) %>%
             select('codon', 'estimate'),
           by = "codon"
         ) %>%

@@ -10,7 +10,7 @@ spl_mapFromTranscripts(trspacegr, exons_grl)
 \item{trspacegr}{GRanges; an object in transcript space, to be mapped back
 to the genome}
 
-\item{exonsgrl}{exonsgrl; exons making up the space element is to be mapped
+\item{exons_grl}{exonsgrl; exons making up the space element is to be mapped
 from.}
 }
 \value{

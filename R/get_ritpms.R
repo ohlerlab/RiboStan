@@ -462,6 +462,8 @@ optimize_ritpms <- function(spmat, anno, iternum = 500, verbose = FALSE) {
 #' the columns values
 #'
 #' @param spmat a sparse numeric matrix describing RPF's multimapping
+#' @param return_mat whether to a matrix for selecting the elements, 
+#'                  as opposed to the summary data frame;defaults to TRUE
 #' @return A matrix of the
 
 

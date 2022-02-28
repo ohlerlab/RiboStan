@@ -8,6 +8,9 @@ sample_cols_spmat(spmat, return_mat = TRUE)
 }
 \arguments{
 \item{spmat}{a sparse numeric matrix describing RPF's multimapping}
+
+\item{return_mat}{whether to a matrix for selecting the elements,
+as opposed to the summary data frame;defaults to TRUE}
 }
 \value{
 A matrix of the

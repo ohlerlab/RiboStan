@@ -163,7 +163,7 @@ get_metacodon_profs <- function(covgrs, anno, n_wind_l_ext = 45) {
   metacodondf <- bind_rows(rust_roel, .id = "sample")
   #
   metacodondf <- mutate(metacodondf, position = 
-      .data$position - 1 - (.data$n_wind_l_ext))
+      .data$position - 1 - (n_wind_l_ext))
   metacodondf <- filter(metacodondf, !.data$codon %in% c("TAG", "TAA", "TGA"))
   metacodondf <- mutate(metacodondf, count = .data$ro_cl / .data$re_c)
   metacodondf$nreadlen <- metacodondf$readlen %>% as.numeric()

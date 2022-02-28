@@ -9,7 +9,7 @@ resize_grl(grl, gwidth, fix = "start", check = TRUE)
 \arguments{
 \item{grl}{GRangesList; a GRangesList object}
 
-\item{width}{GRangesList; integer/IntegerList to set as new width.}
+\item{gwidth}{GRangesList; integer/IntegerList to set as new width.}
 }
 \value{
 A GRangesList object shortend/lengthened, respecting exon boundaries
