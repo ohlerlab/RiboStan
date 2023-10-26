@@ -23,7 +23,7 @@ get_codposdf <- function(orfnames, anno) {
   })
   codposdf[[1]]%>%head
   codposdf <- bind_rows(codposdf, .id = "orf_id")
-  colnames(codposdf) <- c("orf_id", "po", "codon")
+  colnames(codposdf) <- c("orf_id", "pos", "codon")
   codposdf
 }
 
