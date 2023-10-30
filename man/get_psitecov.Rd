@@ -39,7 +39,5 @@ dwell times)
 }
 \author{
 Dermot Harnett, \email{dermot.p.harnett@gmail.com}
-
-Dermot Harnett, \email{dermot.p.harnett@gmail.com}
 }
 \keyword{Ribostan}

@@ -21,9 +21,6 @@ a data frame with columns gene_id, expr
 Aggregate transcript level RiboPMs to the gene-level
 Ignores uORF expression
 }
-\details{
-
-}
 \examples{
 data(chr22_anno)
 data(rpfs)

@@ -6,7 +6,7 @@
 #' @importFrom readr write_tsv read_tsv
 #' @import testthat
 #' @import ggplot2
-#' @importFrom IRanges IRanges subsetByOverlaps overlapsAny
+#' @importFrom IRanges IRanges subsetByOverlaps overlapsAny pintersect
 #' @importFrom S4Vectors elementNROWS List subjectHits queryHits `%in%`
 #' @importFrom GenomeInfoDb Seqinfo keepSeqlevels seqnames seqlevels seqlengths 
 #' @importFrom GenomeInfoDb seqinfo seqlevels<- seqinfo<- seqnames<-
