@@ -704,6 +704,7 @@ subset_annotation <- function(anno, orfs) {
 #' transcript space, (or past the) end of the transcript if necessary, so that
 #' all sequences have the same 'UTRs'.
 #' @return the name of the file to which the sequences were output
+#' @export
 #' @examples
 #' gtf <- system.file("extdata", "gcv37.anno.chr22.gtf",
 #'   package = "Ribostan",
