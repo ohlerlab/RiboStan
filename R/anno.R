@@ -340,7 +340,7 @@ get_cdsgrl <- function(filt_anno, fafileob, ignore_orf_validity) {
     GenomicFeatures::extractTranscriptSeqs(x = fafileob, .)
 
   # some sequences have spaces (ends of chrs i think)
-  filterchars <- cdsseqends %>% str_detect("[^ATCG]")
+  filterchars <- cdsseqends %>% as.vector() %>% str_detect("[^ATCG]")
   cdsseqends[filterchars] <- "AAAAAA"
   cdsseqends <- Biostrings::translate(cdsseqends)
   stopifnot(Biostrings::nchar(cdsseqends) %in% 2)
