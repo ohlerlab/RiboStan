@@ -127,6 +127,7 @@ get_cds_reads <- function(cov, anno) {
   # load genomic or transcriptomic bam
   genomicbam <- seqnames(cov) %>%
     head(1) %>%
+    as.vector() %>%
     str_detect("chr")
   if (genomicbam) {
     cov <- cov %>%
