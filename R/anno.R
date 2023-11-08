@@ -6,7 +6,7 @@
 #' @importFrom readr write_tsv read_tsv
 #' @import testthat
 #' @import ggplot2
-#' @importFrom IRanges IRanges subsetByOverlaps overlapsAny
+#' @importFrom IRanges IRanges subsetByOverlaps overlapsAny pintersect
 #' @importFrom S4Vectors elementNROWS List subjectHits queryHits `%in%`
 #' @importFrom GenomeInfoDb Seqinfo keepSeqlevels seqnames seqlevels seqlengths 
 #' @importFrom GenomeInfoDb seqinfo seqlevels<- seqinfo<- seqnames<-
@@ -340,7 +340,7 @@ get_cdsgrl <- function(filt_anno, fafileob, ignore_orf_validity) {
     GenomicFeatures::extractTranscriptSeqs(x = fafileob, .)
 
   # some sequences have spaces (ends of chrs i think)
-  filterchars <- cdsseqends %>% str_detect("[^ATCG]")
+  filterchars <- cdsseqends %>% as.vector() %>% str_detect("[^ATCG]")
   cdsseqends[filterchars] <- "AAAAAA"
   cdsseqends <- Biostrings::translate(cdsseqends)
   stopifnot(Biostrings::nchar(cdsseqends) %in% 2)
@@ -704,6 +704,7 @@ subset_annotation <- function(anno, orfs) {
 #' transcript space, (or past the) end of the transcript if necessary, so that
 #' all sequences have the same 'UTRs'.
 #' @return the name of the file to which the sequences were output
+#' @export
 #' @examples
 #' gtf <- system.file("extdata", "gcv37.anno.chr22.gtf",
 #'   package = "Ribostan",
