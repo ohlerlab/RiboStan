@@ -1,15 +1,15 @@
 Package: Ribostan
 Title: Estimates Isoform Specific RPF Footprint Densities
-Version: 0.99.0
+Version: 0.99.1
 Authors@R: 
     person(given = "Dermot",
-           family = "Harentt",
+           family = "Harnett",
            role = c("aut", "cre"),
            email = "dermot.harnett@mdc-berlin.de",
            comment = c(github = "www.github.com/zslastman"))
 Maintainers@R: 
     person(given = "Dermot",
-           family = "Harentt",
+           family = "Harnett",
            role = c("aut", "cre"),
            email = "dermot.harnett@mdc-berlin.de",
            comment = c(github = "www.github.com/zslastman"))
