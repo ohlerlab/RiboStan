@@ -261,7 +261,7 @@ hasMstart <- function(cdsgrl, fafileob) {
     sort_grl_st() %>%
     resize_grl(3, "start") %>%
     GenomicFeatures::extractTranscriptSeqs(x = fafileob, .) %>%
-    Biostrings::translate(.)
+    Biostrings::translate(. if.fuzzy.codon = "solve")
   cdsseqstarts == "M"
 }
 
