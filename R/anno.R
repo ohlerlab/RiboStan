@@ -744,7 +744,7 @@ make_ext_fasta <- function(gtf, fasta, outfasta, fpext = 50, tpext = 50) {
   cdsgrl <- anno$cdsgrl
   exonsgrl <- anno$exonsgrl[names(cdsgrl)]
   cdsexonsgrl <- anno$exonsgrl[names(cdsgrl)]
-  cdsstartpos <- start(anno$trspacecds)
+  cdsstartpos <- GenomicRanges::start(anno$trspacecds)
   # get exons for our cds
   cdsexonsgrl <- sort_grl_st(cdsexonsgrl)
   # get an object representing the CDS In transript space
