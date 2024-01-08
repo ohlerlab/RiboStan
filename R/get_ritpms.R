@@ -17,7 +17,7 @@ id <- function(cov) BiocGenerics::match(cov, unique(cov))
 
 addphase <- function(gr, cdsstarts) {
   cdsstarts <- cdsstarts[as.vector(seqnames(gr))]
-  gr$phase <- unlist((start(gr) - cdsstarts) %% 3)
+  gr$phase <- unlist((GenomicRanges::start(gr) - cdsstarts) %% 3)
   gr
 }
 
@@ -214,7 +214,7 @@ get_psite_gr <- function(rpfs, offsets_df, anno) {
   #
   orfov_ind <- findOverlaps(rpfs, orfs, select = "first", ignore.strand = TRUE)
   rpfs$orf <- S4Vectors::Rle(names(orfs)[orfov_ind])
-  rpfs$phase <- start(rpfs) - start(orfs)[orfov_ind]
+  rpfs$phase <- GenomicRanges::start(rpfs) - GenomicRanges::start(orfs)[orfov_ind]
   rpfs$phase <- rpfs$phase %% 3
   #
   # now get offsets for all
@@ -237,7 +237,7 @@ get_psite_gr <- function(rpfs, offsets_df, anno) {
   mov_rpfs_ind <- findOverlaps(mov_rpfs, orfs, ignore.strand = TRUE)
   mov_rpfs <- rep(mov_rpfs, mov_rpfs_ov)
   mov_rpfs$orf <- names(orfs)[subjectHits(mov_rpfs_ind)]
-  mov_rpfs$phase <- start(mov_rpfs) - start(orfs)[subjectHits(mov_rpfs_ind)]
+  mov_rpfs$phase <- GenomicRanges::start(mov_rpfs) - GenomicRanges::start(orfs)[subjectHits(mov_rpfs_ind)]
   mov_rpfs$phase <- mov_rpfs$phase %% 3
   # get offsets for our multi orf alignments
   mov_rpfs$p_offset <- mov_rpfs %>%

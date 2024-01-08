@@ -40,7 +40,7 @@ NULL
 
 order_grl_st <- function(grl) {
   stopifnot(length(grl)>0)
-  order(start(grl) * (((strand(grl) != "-") + 1) * 2 - 3))
+  order(GenomicRanges::start(grl) * (((strand(grl) != "-") + 1) * 2 - 3))
 }
 
 #' Sort a GRanges list object with the sub-elements ordered 5' to 3'
@@ -130,7 +130,7 @@ resize_grl <- function(grl, gwidth, fix = "start", check = TRUE) {
     grl <- resize_grl_endfix(grl, grlwidths + diffs)
   }
   if (check) {
-    startstoolow <- any(start(grl) <= 0)
+    startstoolow <- any(GenomicRanges::start(grl) <= 0)
     if (any(startstoolow)) {
       errortxt <- str_interp(paste0(
         "${sum(startstoolow)} ranges extended below",
@@ -140,7 +140,7 @@ resize_grl <- function(grl, gwidth, fix = "start", check = TRUE) {
     }
     intlistinds <- IRanges::IntegerList(as.list(rep(1, length(grl))))
     grlseqs <- as.vector(unlist(use.names = FALSE, seqnames(grl)[intlistinds]))
-    endhighvect <- (end(grl) > GenomeInfoDb::seqlengths(grl)[grlseqs])
+    endhighvect <- (GenomicRanges::end(grl) > GenomeInfoDb::seqlengths(grl)[grlseqs])
     iscirc <- seqinfo(grl)@is_circular[match(grlseqs,seqinfo(grl)@seqnames)]
     endhighvect[iscirc%in%TRUE]<-FALSE
     endstoohigh <- any(endhighvect)
@@ -170,7 +170,7 @@ resize_grl <- function(grl, gwidth, fix = "start", check = TRUE) {
 
 
 fmcols <- function(grl, ...) {
-  startinds <- start(grl@partitioning)
+  startinds <- GenomicRanges::start(grl@partitioning)
   with(as.data.frame(grl@unlistData@elementMetadata), ...)[startinds]
 }
 
@@ -190,15 +190,15 @@ fmcols <- function(grl, ...) {
 is_out_of_bounds <- function(gr, si = seqinfo(gr)) {
   if (is(gr, "GenomicRangesList")) {
     grchrs <- as.character(seqnames(gr@unlistData))
-    is_out <- end(gr) > split(
+    is_out <- GenomicRanges::end(gr) > split(
       seqlengths(si)[grchrs],
       gr@partitioning
     )
   } else {
     seqinfo(gr) <- si
-    is_out <- end(gr) > seqlengths(gr)[as.character(seqnames(gr))]
+    is_out <- GenomicRanges::end(gr) > seqlengths(gr)[as.character(seqnames(gr))]
   }
-  start(gr) < 1 | is_out
+  GenomicRanges::start(gr) < 1 | is_out
 }
 
 #' Map From a transcript to the genome, splitting elements by exons
@@ -629,7 +629,7 @@ load_annotation <- function(
   trspacecds <- get_trspace_cds(cdsgrl, exonsgrl)
   #
   cdsstarts <- trspacecds %>%
-    start() %>%
+    GenomicRanges::start() %>%
     setNames(names(trspacecds))
   #
   longtrs <- width(exonsgrl) %>%
@@ -653,9 +653,9 @@ load_annotation <- function(
   outanno <- c(
     outanno,
     list(
-      cdsstarts = outanno$trspacecds %>% start() %>%
+      cdsstarts = outanno$trspacecds %>% GenomicRanges::start() %>%
         setNames(names(outanno$trspacecds)),
-      cds_prestop_st = outanno$trspacecds %>% end() %>% `-`(2) %>%
+      cds_prestop_st = outanno$trspacecds %>% GenomicRanges::end() %>% `-`(2) %>%
         setNames(names(outanno$trspacecds))
     )
   )
@@ -749,11 +749,11 @@ make_ext_fasta <- function(gtf, fasta, outfasta, fpext = 50, tpext = 50) {
   cdsexonsgrl <- sort_grl_st(cdsexonsgrl)
   # get an object representing the CDS In transript space
   cdstrspace <- anno$trspacecds[names(cdsgrl)]
-  endpos <- sum(width(cdsexonsgrl)) - end(cdstrspace)
+  endpos <- sum(width(cdsexonsgrl)) - GenomicRanges::end(cdstrspace)
   # expand our first exon when needed
   startposexpansion <- pmax(0, fpext - cdsstartpos + 1)
   # expand/trim the 5' end of the exons
-  startinds <- start(cdsexonsgrl@partitioning)
+  startinds <- GenomicRanges::start(cdsexonsgrl@partitioning)
   cdsexonsgrl@unlistData[startinds] <- cdsexonsgrl@unlistData[startinds] %>%
     resize(width(.) + startposexpansion, "end")
   # expand or trim the last exon when needed
@@ -907,9 +907,9 @@ get_ribofasta_anno <- function(ribofasta) {
   anno <- c(
     anno,
     list(
-    cdsstarts = anno$trspacecds %>% start() %>%
+    cdsstarts = anno$trspacecds %>% GenomicRanges::start() %>%
         setNames(names(anno$trspacecds)),
-      cds_prestop_st = anno$trspacecds %>% end() %>% `-`(2) %>%
+      cds_prestop_st = anno$trspacecds %>% GenomicRanges::end() %>% `-`(2) %>%
         setNames(names(anno$trspacecds))
     )
   )

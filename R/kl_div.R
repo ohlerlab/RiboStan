@@ -54,9 +54,9 @@ get_cds_codons <- function(anno,
   strand(codongr) <- "+"
   # expand the windows around these codons
   codongrbak <- codongr
-  codongr <- codongr[(start(codongr) - 1) >= n_wind_l_ext]
+  codongr <- codongr[(GenomicRanges::start(codongr) - 1) >= n_wind_l_ext]
   enddists <- (seqlengths(codongr)[as.character(seqnames(codongr))] -
-    end(codongr))
+    GenomicRanges::end(codongr))
   codongr <- codongr[enddists >= n_wind_r_ext]
   codmatchwindows <- codongr %>%
     resize(n_wind_l_ext, "end") %>%

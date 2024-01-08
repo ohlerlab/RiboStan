@@ -19,8 +19,8 @@ add_cor_offset <- function(rpfs, anno) {
     methods::as("GRanges") %>%
     addphase(cdsstarts) %>%
     {
-      .$startoffset <- cdsstarts[as.vector(seqnames(.))] + .$phase - start(.)
-      .$endoffset <- cds_prestop_st[as.vector(seqnames(.))] + .$phase - start(.)
+      .$startoffset <- cdsstarts[as.vector(seqnames(.))] + .$phase - GenomicRanges::start(.)
+      .$endoffset <- cds_prestop_st[as.vector(seqnames(.))] + .$phase - GenomicRanges::start(.)
       .$cor_offset <- ifelse(
         (.$startoffset < (.$readlen - 5)) & (.$startoffset > 5),
         .$startoffset,
