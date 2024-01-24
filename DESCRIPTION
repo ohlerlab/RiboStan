@@ -1,17 +1,15 @@
 Package: Ribostan
 Title: Estimates Isoform Specific RPF Footprint Densities
-Version: 0.99.4
+Version: 0.99.5
 Authors@R: 
+    person(given = "Gabriel",
+           family = "Villamil",
+           role = c("aut", "cre"),
+           email = "gabriel.villamil@mdc-berlin.de",
+           comment = c(github = "www.github.com/ggvillamil", ORCID = "0000-0001-6701-9505")),
     person(given = "Dermot",
            family = "Harnett",
-           role = c("aut", "cre"),
-           email = "dermot.harnett@mdc-berlin.de",
-           comment = c(github = "www.github.com/zslastman"))
-Maintainers@R: 
-    person(given = "Dermot",
-           family = "Harnett",
-           role = c("aut", "cre"),
-           email = "dermot.harnett@mdc-berlin.de",
+           role = c("aut"),
            comment = c(github = "www.github.com/zslastman"))
 Description: Ribostan is a simple package which contains functionality related
   to ribosomal footprint data and quantitative analysis thereof. It includes
@@ -60,4 +58,4 @@ Imports:
     broom,
     tibble,
 Depends:
-    R (>= 4.0.0)
+    R (>= 4.4.0)
