@@ -17,8 +17,7 @@ Description: Ribostan is a simple package which contains functionality related
   plots of KL divergence in 'metacodon' plots, and to estimate Ribosomal Footprint
   densities in an isoform aware manner. It also provides functions for quantifying
   periodicity of open reading frames, and identifying translated uORFs.
-License: `use_mit_license()`, `use_gpl3_license()` or friends to
-    pick a license
+License: GPL (>= 3)
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.2.0
@@ -57,5 +56,8 @@ Imports:
     ORFik,
     broom,
     tibble,
+    parallel,
 Depends:
     R (>= 4.4.0)
+URL: https://github.com/ohlerlab/RiboStan
+BugReports: https://github.com/ohlerlab/RiboStan/issues
