@@ -540,11 +540,11 @@ load_annotation <- function(
   stopifnot(seqlevels(seqinfo(fafileob))>0)
   stopifnot(length(tokeep)>0)
   toremove <- seqlevels(anno)%>%setdiff(seqlevels(seqinfo(fafileob)))
-  nonempty = intersect(toremove,seqnames(anno))
+  nonempty <- intersect(toremove,seqnames(anno))
   message(str_interp(paste0('removing ${length(nonempty)} non empty seqlevels',
     ' that are absent from the fasta')))
   anno <- anno %>% GenomeInfoDb::dropSeqlevels(nonempty,pruning.mode='coarse')
-  empty = setdiff(toremove,seqnames(anno))
+  empty <- setdiff(toremove,seqnames(anno))
   message(str_interp(paste0('removing ${length(empty)} non empty seqlevels',
     ' that are absent from the fasta')))
   anno <- anno %>% GenomeInfoDb::dropSeqlevels(empty,pruning.mode='coarse')
