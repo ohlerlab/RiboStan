@@ -88,7 +88,7 @@ get_psitecov <- function(rpfs, offsets_df, anno) {
 #'
 #' @param psite_cov - a data frame of RPF footprints
 #' @param anno - an annotation object
-#' @return 	a data frame with columns orf_id, p_codon, a_codon, count
+#' @return a data frame with columns orf_id, p_codon, a_codon, count
 
 get_sitedf <- function(psite_cov, anno) {
   #
@@ -130,7 +130,7 @@ get_sitedf <- function(psite_cov, anno) {
 #' @param method - which method to use to estimate the codon occupancies,
 #' @param covthresh - how many reads to require in an ORF for it to be used
 #' defaults to RUST
-#' @return 	a data frame with columns codon,position,estimate,upper,lower,
+#' @return a data frame with columns codon,position,estimate,upper,lower,
 #' p.value
 #' @examples
 #' data(chr22_anno)

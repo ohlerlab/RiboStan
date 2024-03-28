@@ -394,9 +394,9 @@ get_read_spmat <- function(psites, anno) {
 
 optimize_ritpms <- function(spmat, anno, iternum = 500, verbose = FALSE) {
   trlens <- anno$trspacecds %>%
-    width() %>%
-    unlist() %>%
-    setNames(names(anno$trspacecds))
+  width() %>%
+  unlist() %>%
+  setNames(names(anno$trspacecds))
   # now let's try the whole shebang in rstan
   setdiff(colnames(spmat),names(trlens))
   stopifnot(colnames(spmat)%in%names(trlens))
@@ -404,42 +404,42 @@ optimize_ritpms <- function(spmat, anno, iternum = 500, verbose = FALSE) {
   fdata <- list(nonorm_trlen = sptrlens)
   fdata <- c(fdata, spmat %>% rstan::extract_sparse_parts(.))
   fdata$trlen <- fdata$nonorm_trlen %>%
-    {
-      . / sum(.)
-    }
+  {
+    . / sum(.)
+  }
   fdata$TR <- spmat %>% ncol()
   fdata$R <- spmat %>% nrow()
   fdata$V <- fdata$w %>% length()
   fdata$Ulen <- fdata$u %>% length()
   fdata$classweights <- rep(1, fdata$R)
   init <- list(ritpm = spmat %>%
-    {
-      Matrix::colSums(.)
+  {
+    Matrix::colSums(.)
     } %>% `/`(fdata$trlen) %>%
     {
       . / sum(.)
-    })
+      })
   #
   modelcode <- "
-		data {
-		  int TR;// number of TRs
-		  int R;// number of reads
-		  int V;
-		  int Ulen;
-		  vector [V] w ;
-		  int  v [V];
-		  int   u [Ulen];
-		  vector [R] classweights;
-		}
-		parameters {
-		  simplex [TR] n;
-		}
-		model {
-		    target += log(
-		      csr_matrix_times_vector(R, TR, w, v, u, n)
-		    ).* classweights;
-		}
-	"
+  data {
+    int TR;// number of TRs
+    int R;// number of reads
+    int V;
+    int Ulen;
+    vector [V] w ;
+    int  v [V];
+    int   u [Ulen];
+    vector [R] classweights;
+  }
+  parameters {
+    simplex [TR] n;
+  }
+  model {
+    target += log(
+    csr_matrix_times_vector(R, TR, w, v, u, n)
+    ).* classweights;
+  }
+  "
   eqritpm_mod <- rstan::stan_model(model_code = modelcode)
   message('optimizing...')
   opt <- rstan::optimizing(
@@ -448,7 +448,7 @@ optimize_ritpms <- function(spmat, anno, iternum = 500, verbose = FALSE) {
     init = init,
     verbose = verbose,
     iter = iternum
-  )
+    )
   opt$seqnames <- colnames(spmat)
   opt$trlen <- fdata$nonorm_trlen[opt$seqnames]
   opt
