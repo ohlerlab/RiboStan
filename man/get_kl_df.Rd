@@ -8,6 +8,8 @@ get_kl_df(metacodondf, anno)
 }
 \arguments{
 \item{metacodondf}{a data frame with metacodon info}
+
+\item{anno}{An annotation object}
 }
 \value{
 A data frame with expected and actual rust score per position in

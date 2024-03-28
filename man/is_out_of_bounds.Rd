@@ -2,12 +2,15 @@
 % Please edit documentation in R/anno.R
 \name{is_out_of_bounds}
 \alias{is_out_of_bounds}
-\title{Check if GRanges elements are out of bounds}
+\title{Check if GRanges elements are out of chromosome bounds}
 \usage{
 is_out_of_bounds(gr, si = seqinfo(gr))
 }
 \arguments{
-\item{grl}{String; full path to html report file.}
+\item{gr}{GRanges or GrangesList of elements}
+
+\item{si}{seqinfo information about length and names of
+chromosomes}
 }
 \value{
 a logical vector valued TRUE if GRanges

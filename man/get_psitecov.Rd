@@ -2,7 +2,7 @@
 % Please edit documentation in R/model_TE.R
 \name{get_psitecov}
 \alias{get_psitecov}
-\title{Generate a fake dataset of p-sites}
+\title{Get a coverage RleList of psite coverage over a set of ORFs}
 \usage{
 get_psitecov(rpfs, offsets_df, anno)
 }
@@ -19,23 +19,12 @@ space
 \item{anno}{\itemize{
 \item an annotation object with at least one ORF per transcript
 }}
-
-\item{orfnames}{\itemize{
-\item the ORFs to get sequence data for
-}}
 }
 \value{
-returns a data frame with columns orf_id, pos, codon
-get a coverage RleList of psite coverage over a set of ORFs
-
 a numeric SimpleRleList for each ORF with p-site density
 }
 \description{
-This function useful for testing, generates a fake set of psites
-given an annotation,
-object
-to get estimates of per-codon occupancy (which should be proportional to
-dwell times)
+Get a coverage RleList of psite coverage over a set of ORFs
 }
 \author{
 Dermot Harnett, \email{dermot.p.harnett@gmail.com}

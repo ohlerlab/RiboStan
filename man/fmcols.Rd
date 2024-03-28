@@ -8,6 +8,8 @@ fmcols(grl, ...)
 }
 \arguments{
 \item{grl}{String; full path to html report file.}
+
+\item{...}{metadata column to pull}
 }
 \value{
 length n vector pulled from mcols of first list elements

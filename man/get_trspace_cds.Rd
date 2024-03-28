@@ -2,23 +2,23 @@
 % Please edit documentation in R/anno.R
 \name{get_trspace_cds}
 \alias{get_trspace_cds}
-\title{Check if a granges list of CDS have start codons}
+\title{Get CDS positions in transcript space}
 \usage{
 get_trspace_cds(cdsgrl, exonsgrl)
 }
 \arguments{
-\item{exonsgrl}{exonsgrl; exons making up the space element is to be mapped
-from.}
+\item{cdsgrl}{GRangesList; List of filtered CDS GRanges from GTF
+annotation}
 
-\item{trspacegr}{GRanges; an object in transcript space, to be mapped back
-to the genome}
+\item{exonsgrl}{GRangesList; exons making up the space element to be mapped
+from}
 }
 \value{
 a granges object containing the coding sequence range for each
 transcript
 }
 \description{
-Check if a granges list of CDS have start codons
+Get CDS positions in transcript space
 }
 \author{
 Dermot Harnett, \email{dermot.p.harnett@gmail.com}

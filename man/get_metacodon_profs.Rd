@@ -7,12 +7,12 @@
 get_metacodon_profs(covgrs, anno, n_wind_l_ext = 45)
 }
 \arguments{
-\item{anno}{\itemize{
-\item an annotation object
-scores
-}}
+\item{covgrs}{A list of SimpleRleLists - RPF coverage}
 
-\item{rpf_covs}{A list of SimpleRleLists - RPF coverage}
+\item{anno}{An annotation object}
+
+\item{n_wind_l_ext}{The 5' extent of the window around the codon to return
+Defaults to: 45}
 }
 \value{
 A data frame with expected and actual rust score per position in

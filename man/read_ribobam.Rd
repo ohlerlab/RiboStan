@@ -9,6 +9,9 @@ read_ribobam(ribobam, which, strip_seqnames = TRUE)
 \arguments{
 \item{ribobam}{String; full path to html report file.}
 
+\item{which}{Select which reads to include (e.g. those that overlap
+with start and stop positions)}
+
 \item{strip_seqnames}{whether the function should remove all text after the
 first '|', useful if aligning to gencode fastas#
 Defaults to \code{TRUE}}

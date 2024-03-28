@@ -7,9 +7,9 @@
 convert_gtf(anno, keep_cols)
 }
 \arguments{
-\item{keep_cols}{the columns to keep in the final annotation}
+\item{anno}{annotation GRanges read in by rtracklayer}
 
-\item{an}{annotation GRanges read in by rtracklayer}
+\item{keep_cols}{the columns to keep in the final annotation}
 }
 \value{
 a granges object with just the exon and CDS elements

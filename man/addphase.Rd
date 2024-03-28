@@ -7,9 +7,9 @@
 addphase(gr, cdsstarts)
 }
 \arguments{
-\item{cdsstarts}{named vector of cds starts}
+\item{gr}{GRanges object with RPFs}
 
-\item{rpfs}{GRanges object with RPFs}
+\item{cdsstarts}{named vector of cds starts}
 }
 \value{
 the rpf granges but wth a 'phase' column

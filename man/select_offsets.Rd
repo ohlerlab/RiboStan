@@ -2,22 +2,22 @@
 % Please edit documentation in R/kl_div.R
 \name{select_offsets}
 \alias{select_offsets}
-\title{Get a dataframe with p-site offsets from a datafram eof KL divergence}
+\title{Get a dataframe with p-site offsets from a datafram of KL divergence}
 \usage{
 select_offsets(kl_df, method = "a_max")
 }
 \arguments{
+\item{kl_df}{dataframe with KL divergence per readlength, position in window
+around codon}
+
 \item{method}{means by which to select best offfset currently only possible value
 is a_max - assumes the maximum KL divergence occurs under the A site}
-
-\item{metacodondf}{A data frame with expected and actual rust score per position in
-window, codon, readlength}
 }
 \value{
 a dataframe with p-site offsets per readlength, sample
 }
 \description{
-Get a dataframe with p-site offsets from a datafram eof KL divergence
+Get a dataframe with p-site offsets from a datafram of KL divergence
 }
 \examples{
 data(chr22_anno)

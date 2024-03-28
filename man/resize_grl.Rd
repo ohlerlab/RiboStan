@@ -10,6 +10,10 @@ resize_grl(grl, gwidth, fix = "start", check = TRUE)
 \item{grl}{GRangesList; a GRangesList object}
 
 \item{gwidth}{GRangesList; integer/IntegerList to set as new width.}
+
+\item{fix}{Position to fix to when resizing (start, stop, or center)}
+
+\item{check}{Boolean; check if resulting GRanges extend beyond bounds}
 }
 \value{
 A GRangesList object shortend/lengthened, respecting exon boundaries

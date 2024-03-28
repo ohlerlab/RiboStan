@@ -17,15 +17,18 @@ load_annotation(
 \arguments{
 \item{gtf}{A GTF with gene annotation}
 
+\item{fafile}{FaFile; path to a genomic Fasta file}
+
 \item{add_uorfs}{Whether to look for and include uORFs}
+
+\item{ignore_orf_validity}{Boolean; flag whether to include ORFs
+missing a valid stop codon}
 
 \item{keep_cols}{columns to save from the gtf metadata}
 
 \item{DEFAULT_CIRC_SEQS}{default chromsoomes to treat as circular}
 
 \item{findUORFs_args}{Additional arguments to pass to ORFik::findUORFs}
-
-\item{fafileob}{FaFile; a genomic Fasta file}
 }
 \value{
 a list containing annotation objects used by other functions.

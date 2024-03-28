@@ -7,7 +7,9 @@
 resize_grl_endfix(grl, width)
 }
 \arguments{
-\item{grl}{the width to resize the GRL to; integer}
+\item{grl}{GRangesList; a GRangesList object}
+
+\item{width}{the width to resize the GRL to; integer}
 }
 \value{
 A GRangesList object shortend/lengthened, respecting exon boundaries

@@ -9,8 +9,7 @@ get_cds_reads(cov, anno)
 \arguments{
 \item{cov}{GRanges; A granges object with}
 
-\item{strip_seqnames}{whether the function should remove all text after the
-first '|', useful if aligning to gencode fastas Defaults to \code{TRUE}}
+\item{anno}{An annotation object}
 }
 \value{
 This function returns a granges object with the read names in the

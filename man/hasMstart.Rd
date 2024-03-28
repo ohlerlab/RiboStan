@@ -7,11 +7,11 @@
 hasMstart(cdsgrl, fafileob)
 }
 \arguments{
-\item{trspacegr}{GRanges; an object in transcript space, to be mapped back
-to the genome}
+\item{cdsgrl}{GRangesList; List of filtered CDS GRanges from GTF
+annotation}
 
-\item{exonsgrl}{exonsgrl; exons making up the space element is to be mapped
-from.}
+\item{fafileob}{FaFile object; reference to an indexed genomic
+fasta file}
 }
 \value{
 a granges object containing 1 or more element for each

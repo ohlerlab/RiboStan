@@ -26,10 +26,6 @@ Defaults to 60}
 
 \item{n_end_buff}{The number of bp at the end of each cds to exclude
 Defaults to 60}
-
-\item{offsets_df}{\itemize{
-\item a data frame with numeric columns readlen,phase,offset
-}}
 }
 \value{
 a GRanges object with the codon identity in the names, and the

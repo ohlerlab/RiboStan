@@ -17,6 +17,10 @@ get_readgr(
 
 \item{anno}{An annotation object}
 
+\item{offsets_df}{\itemize{
+\item a data frame with numeric columns readlen,phase,offset
+}}
+
 \item{startstop}{option to select only reads that overlapt he start/stop
 for offset determination,Defaults to FALSE}
 

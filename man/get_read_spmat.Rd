@@ -8,6 +8,8 @@ get_read_spmat(psites, anno)
 }
 \arguments{
 \item{psites}{GRanges object of}
+
+\item{anno}{an annotation object}
 }
 \value{
 A matrix of the infile

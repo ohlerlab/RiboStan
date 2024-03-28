@@ -9,7 +9,11 @@ get_cdsgrl(filt_anno, fafileob, ignore_orf_validity)
 \arguments{
 \item{filt_anno}{GRanges; an unfilted imported GTF}
 
-\item{fafileob}{FaFile; a genomic Fasta file}
+\item{fafileob}{FaFile object; reference to an indexed genomic
+fasta file}
+
+\item{ignore_orf_validity}{Boolean; flag whether to include ORFs
+missing a valid stop codon}
 }
 \value{
 a GRangesList split by transcript, which contains the filtered coding
