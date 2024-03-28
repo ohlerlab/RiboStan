@@ -1,6 +1,6 @@
 Package: Ribostan
 Title: Estimates Isoform Specific RPF Footprint Densities
-Version: 0.99.7
+Version: 0.99.8
 Authors@R: c(
     person(given = "Gabriel",
            family = "Villamil",
