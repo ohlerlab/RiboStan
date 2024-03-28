@@ -21,6 +21,11 @@ a data frame with columns gene_id, expr
 Aggregate transcript level RiboPMs to the gene-level
 Ignores uORF expression
 }
+\details{
+This function reads in a vector of transcript-level
+ribosome footprint densitiies and aggregates values from
+transcripts of the same gene and outputs gene-level values
+}
 \examples{
 data(chr22_anno)
 data(rpfs)

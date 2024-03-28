@@ -41,9 +41,7 @@ defaults to RUST
 }}
 }
 \value{
-\if{html}{\out{<div class="sourceCode">}}\preformatted{a data frame with columns codon,position,estimate,upper,lower,
-}\if{html}{\out{</div>}}
-
+a data frame with columns codon,position,estimate,upper,lower,
 p.value
 }
 \description{

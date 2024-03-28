@@ -23,7 +23,7 @@ Given a bam file, and transcript fasta, output a file of ribosome densities
 The Ribosome densities are saved in salmon format
 }
 \examples{
-\dontrun{iget_exprfile(ribobam, ribofasta, outfile)}
+get_exprfile(ribobam, ribofasta, outfile)
 }
 \author{
 Dermot Harnett, \email{dermot.p.harnett@gmail.com}

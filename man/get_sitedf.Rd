@@ -17,8 +17,7 @@ get_sitedf(psite_cov, anno)
 }}
 }
 \value{
-\if{html}{\out{<div class="sourceCode">}}\preformatted{a data frame with columns orf_id, p_codon, a_codon, count
-}\if{html}{\out{</div>}}
+a data frame with columns orf_id, p_codon, a_codon, count
 }
 \description{
 create a data frame with a and p site codons, and rpf counts per

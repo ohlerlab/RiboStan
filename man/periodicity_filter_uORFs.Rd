@@ -25,13 +25,11 @@ Run Multitaper tests on a set of ORFs
 This function applies a multitaper test to
 }
 \examples{
-\donttest{
 data(chr22_anno)
 data(rpfs)
 data(offsets_df)
 psites <- get_psite_gr(rpfs, offsets_df, chr22_anno)
 filteredanno <- periodicity_filter_uORFs(psites, chr22_anno)
-}
 }
 \author{
 Dermot Harnett, \email{dermot.p.harnett@gmail.com}
