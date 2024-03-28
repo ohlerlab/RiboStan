@@ -169,3 +169,8 @@ gn_elong = gene_level_elong(orf_elong, ritpms, chr22_anno)
 knitr::kable(head(gn_elong))
 
 ```
+
+# SessionInfo
+```
+sessionInfo()
+```
