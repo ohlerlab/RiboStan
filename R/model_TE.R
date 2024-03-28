@@ -122,13 +122,13 @@ get_sitedf <- function(psite_cov, anno) {
 #' data(rpfs)
 #' data(offsets_df)
 #' fafile <- here::here('chr22.fa')
-#' Rsamtools::indexFa(fafile)
 #' library(BSgenome.Hsapiens.UCSC.hg38)
 #' if(!file.exists(fafile)){
 #'     seq <- Biostrings::DNAStringSet(BSgenome.Hsapiens.UCSC.hg38[['chr22']])
 #'     names(seq) <- 'chr22'
 #'     Biostrings::writeXStringSet(
 #'     seq, fafile)}
+#' Rsamtools::indexFa(fafile)
 #' psites <- get_psite_gr(rpfs, offsets_df, chr22_anno)
 #' rust_codon_occ_df <- get_codon_occs(psites, offsets_df, chr22_anno,
 #'   n_genes = 200, method = "RUST"
