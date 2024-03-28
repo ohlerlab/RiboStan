@@ -593,8 +593,9 @@ sample_cov_gr <- function(psites, anno, ritpms) {
 #' @param ripms - named vector of ribosome densities
 #' @param anno An annotation object with a gene-transcript table
 #' @return a data frame with columns gene_id, expr
-#' @details
-#'
+#' @details This function reads in a vector of transcript-level
+#'     ribosome footprint densitiies and aggregates values from
+#'     transcripts of the same gene and outputs gene-level values
 #' @examples
 #' data(chr22_anno)
 #' data(rpfs)
