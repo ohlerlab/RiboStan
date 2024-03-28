@@ -126,13 +126,12 @@ ftest_orfs <- function(psites, anno, n_cores=1) {
 #' @return a numeric vector with the spectral coefficient at 0.333... and the pvalue for the test
 #' @export
 #' @examples
-#'\donttest{
 #' data(chr22_anno)
 #' data(rpfs)
 #' data(offsets_df)
 #' psites <- get_psite_gr(rpfs, offsets_df, chr22_anno)
 #' filteredanno <- periodicity_filter_uORFs(psites, chr22_anno)
-#' }
+
 periodicity_filter_uORFs <- function(psites, anno, remove=TRUE, n_cores=1){
   stopifnot(!is.null(anno$uORF))
   uORFs <- anno$uORF

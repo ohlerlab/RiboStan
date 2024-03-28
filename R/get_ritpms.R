@@ -640,7 +640,7 @@ gene_level_expr <- function(ripms, anno) {
 #' @details The Ribosome densities are saved in salmon format
 #' @export
 #' @examples
-#' \dontrun{iget_exprfile(ribobam, ribofasta, outfile)}
+#' get_exprfile(ribobam, ribofasta, outfile)
 
 
 get_exprfile <- function(ribobam, ribofasta, outfile) {
