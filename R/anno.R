@@ -90,7 +90,7 @@ resize_grl_startfix <- function(grl, width) {
 #' @author Dermot Harnett, \email{dermot.p.harnett@gmail.com}
 #'
 #' @param grl GRangesList; a GRangesList object
-#' @param grl the width to resize the GRL to; integer
+#' @param width the width to resize the GRL to; integer
 #' @return A GRangesList object shortend/lengthened, respecting exon boundaries
 
 resize_grl_endfix <- function(grl, width) {
@@ -108,6 +108,8 @@ resize_grl_endfix <- function(grl, width) {
 #'
 #' @param grl GRangesList; a GRangesList object
 #' @param gwidth GRangesList; integer/IntegerList to set as new width.
+#' @param fix Position to fix to when resizing (start, stop, or center)
+#' @param check Boolean; check if resulting GRanges extend beyond bounds
 #' @return A GRangesList object shortend/lengthened, respecting exon boundaries
 
 resize_grl <- function(grl, gwidth, fix = "start", check = TRUE) {
@@ -166,6 +168,8 @@ resize_grl <- function(grl, gwidth, fix = "start", check = TRUE) {
 #' @author Dermot Harnett, \email{dermot.p.harnett@gmail.com}
 #'
 #' @param grl String; full path to html report file.
+#' @param ... metadata column to pull
+#'
 #' @return length n vector pulled from mcols of first list elements
 
 
@@ -174,7 +178,7 @@ fmcols <- function(grl, ...) {
   with(as.data.frame(grl@unlistData@elementMetadata), ...)[startinds]
 }
 
-#' Check if GRanges elements are out of bounds
+#' Check if GRanges elements are out of chromosome bounds
 #'
 #' Given a grangelist of say N genes with X_n exons, this yields a
 #' length N vector pulled from the mcols of the first element of each
@@ -183,7 +187,9 @@ fmcols <- function(grl, ...) {
 #' @keywords Ribostan
 #' @author Dermot Harnett, \email{dermot.p.harnett@gmail.com}
 #'
-#' @param grl String; full path to html report file.
+#' @param gr GRanges or GrangesList of elements
+#' @param si seqinfo information about length and names of
+#'     chromosomes
 #' @return a logical vector valued TRUE if GRanges
 #' elements are out of the chromosome bounds
 
@@ -247,10 +253,11 @@ spl_mapFromTranscripts <- function(trspacegr, exons_grl) {
 #' @keywords Ribostan
 #' @author Dermot Harnett, \email{dermot.p.harnett@gmail.com}
 #'
-#' @param trspacegr GRanges; an object in transcript space, to be mapped back
-#' to the genome
-#' @param exonsgrl exonsgrl; exons making up the space element is to be mapped
-#' from.
+#' @param cdsgrl GRangesList; List of filtered CDS GRanges from GTF
+#'     annotation
+#' @param fafileob FaFile object; reference to an indexed genomic
+#'     fasta file
+#'
 #' @return a granges object containing 1 or more element for each
 #' transcript space range, in genome space, corresponding to pieces
 #' of each element split by exon boundaries
@@ -265,15 +272,15 @@ hasMstart <- function(cdsgrl, fafileob) {
   cdsseqstarts == "M"
 }
 
-#' Check if a granges list of CDS have start codons
+#' Get CDS positions in transcript space
 #'
 #' @keywords Ribostan
 #' @author Dermot Harnett, \email{dermot.p.harnett@gmail.com}
 #'
-#' @param trspacegr GRanges; an object in transcript space, to be mapped back
-#' to the genome
-#' @param exonsgrl exonsgrl; exons making up the space element is to be mapped
-#' from.
+#' @param cdsgrl GRangesList; List of filtered CDS GRanges from GTF
+#'     annotation
+#' @param exonsgrl GRangesList; exons making up the space element to be mapped
+#'     from
 #' @return a granges object containing the coding sequence range for each
 #' transcript
 
@@ -300,7 +307,11 @@ get_trspace_cds <- function(cdsgrl, exonsgrl) {
 #' @author Dermot Harnett, \email{dermot.p.harnett@gmail.com}
 #'
 #' @param filt_anno GRanges; an unfilted imported GTF
-#' @param fafileob FaFile; a genomic Fasta file
+#' @param fafileob FaFile object; reference to an indexed genomic
+#'     fasta file
+#' @param ignore_orf_validity Boolean; flag whether to include ORFs
+#'     missing a valid stop codon
+#'
 #' @details This takes only coding sequences which are a multiple of 3bp and
 #' have a start and a stop on either end.it always returns coding sequences
 #' without the stops, regardless of their extent in the input.
@@ -420,7 +431,7 @@ width1grs <- function(gr) {
 #' @keywords Ribostan
 #' @author Dermot Harnett, \email{dermot.p.harnett@gmail.com}
 #'
-#' @param an annotation GRanges read in by rtracklayer
+#' @param anno annotation GRanges read in by rtracklayer
 #' @param keep_cols the columns to keep in the final annotation
 #' @return a granges object with just the exon and CDS elements 
 #' that ribostan uses
@@ -481,8 +492,10 @@ convert_gtf <- function(anno, keep_cols){
 #' @author Dermot Harnett, \email{dermot.p.harnett@gmail.com}
 #'
 #' @param gtf A GTF with gene annotation
-#' @param fafileob FaFile; a genomic Fasta file
+#' @param fafile FaFile; path to a genomic Fasta file
 #' @param add_uorfs Whether to look for and include uORFs
+#' @param ignore_orf_validity Boolean; flag whether to include ORFs
+#'     missing a valid stop codon
 #' @param keep_cols columns to save from the gtf metadata
 #' @param DEFAULT_CIRC_SEQS default chromsoomes to treat as circular
 #' @param findUORFs_args Additional arguments to pass to ORFik::findUORFs

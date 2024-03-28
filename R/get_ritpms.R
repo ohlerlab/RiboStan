@@ -8,7 +8,7 @@ id <- function(cov) BiocGenerics::match(cov, unique(cov))
 #' @keywords Ribostan
 #' @author Dermot Harnett, \email{dermot.p.harnett@gmail.com}
 #'
-#' @param rpfs GRanges object with RPFs
+#' @param gr GRanges object with RPFs
 #' @param cdsstarts named vector of cds starts
 #'
 #' @return the rpf granges but wth a 'phase' column
@@ -63,6 +63,8 @@ get_readlens <- function(readlens) {
 #' @param strip_seqnames  whether the function should remove all text after the
 #' first '|', useful if aligning to gencode fastas#
 #' Defaults to \code{TRUE}
+#' @param which Select which reads to include (e.g. those that overlap
+#'     with start and stop positions)
 #' @return This function returns a granges object with the read names in the
 #' names slot and a metadata column
 #' denoting readlength.
@@ -74,6 +76,7 @@ get_readlens <- function(readlens) {
 #' @seealso \code{\link{get_cds_reads}}, \code{\link{get_readlens}}
 
 read_ribobam <- function(ribobam, which, strip_seqnames = TRUE) {
+  # What does which do here? - Gabriel
   #
   flags <- Rsamtools::scanBamFlag(
     isUnmappedQuery = FALSE,
@@ -108,8 +111,8 @@ read_ribobam <- function(ribobam, which, strip_seqnames = TRUE) {
 #' @author Dermot Harnett, \email{dermot.p.harnett@gmail.com}
 #'
 #' @param cov GRanges; A granges object with
-#' @param strip_seqnames  whether the function should remove all text after the
-#' first '|', useful if aligning to gencode fastas Defaults to \code{TRUE}
+#' @param anno An annotation object
+#'
 #' @return This function returns a granges object with the read names in the
 #' names slot and a metadata column
 #' denoting readlength.
@@ -310,6 +313,8 @@ get_psite_gr <- function(rpfs, offsets_df, anno) {
 #' for offset determination,Defaults to FALSE
 #' @param strip_seqnames  whether the function should remove all text after the
 #' first '|', useful if aligning to gencode fastas Defaults to \code{TRUE}
+#' @param offsets_df - a data frame with numeric columns readlen,phase,offset
+#'
 #' @return This function returns a granges object with the read names in the
 #' names slot and a metadata column
 #' denoting readlength.
@@ -357,6 +362,8 @@ get_readgr <- function(ribobam, anno, offsets_df = NULL, startstop = FALSE, stri
 #' get optimal ritpms using stan
 #'
 #' @param psites GRanges object of
+#' @param anno an annotation object
+#'
 #' @return A matrix of the infile
 
 get_read_spmat <- function(psites, anno) {

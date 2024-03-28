@@ -27,23 +27,8 @@ get_codposdf <- function(orfnames, anno) {
   codposdf
 }
 
-#' Generate a fake dataset of p-sites
-#'
-#' This function useful for testing, generates a fake set of psites
-#' given an annotation,
-#' object
-#' to get estimates of per-codon occupancy (which should be proportional to
-#' dwell times)
-#' @keywords Ribostan
-#' @author Dermot Harnett, \email{dermot.p.harnett@gmail.com}
-#'
-#' @param orfnames - the ORFs to get sequence data for
-#' @param offsets_df - a data frame with numeric columns readlen,phase,offset
-#' @param anno - an annotation object
-#' @return returns a data frame with columns orf_id, pos, codon
 
-
-#' get a coverage RleList of psite coverage over a set of ORFs
+#' Get a coverage RleList of psite coverage over a set of ORFs
 #'
 #' @keywords Ribostan
 #' @author Dermot Harnett, \email{dermot.p.harnett@gmail.com}

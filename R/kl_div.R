@@ -5,7 +5,6 @@
 #' @author Dermot Harnett, \email{dermot.p.harnett@gmail.com}
 #'
 #' @param anno An annotation object
-#' @param offsets_df - a data frame with numeric columns readlen,phase,offset
 #' @param n_wind_l_ext The 5' extent of the window around the codon to return
 #' Defaults to: 45
 #' @param n_wind_r_ext The 3' extent of the window around the codon to return
@@ -14,6 +13,7 @@
 #' Defaults to 60
 #' @param n_end_buff The number of bp at the end of each cds to exclude
 #' Defaults to 60
+#'
 #' @return a GRanges object with the codon identity in the names, and the
 #'
 #' @details Use estimates of per codon dwell time to get the mean dwell time
@@ -128,9 +128,10 @@ get_cov_rust_scores <- function(rpf_cov, cds_codons) {
 #' @keywords Ribostan
 #' @author Dermot Harnett, \email{dermot.p.harnett@gmail.com}
 #'
-#' @param rpf_covs A list of SimpleRleLists - RPF coverage
-#' @param anno - an annotation object
-#' scores
+#' @param covgrs A list of SimpleRleLists - RPF coverage
+#' @param anno An annotation object
+#' @param n_wind_l_ext The 5' extent of the window around the codon to return
+#'     Defaults to: 45
 #'
 #' @details gets profiles of read 5' end occurence around codons
 #' @return A data frame with expected and actual rust score per position in
@@ -177,6 +178,8 @@ get_metacodon_profs <- function(covgrs, anno, n_wind_l_ext = 45) {
 #' @author Dermot Harnett, \email{dermot.p.harnett@gmail.com}
 #'
 #' @param metacodondf a data frame with metacodon info
+#' @param anno An annotation object
+#'
 #' @examples
 #' data(chr22_anno)
 #' data(rpfs)
@@ -216,14 +219,14 @@ most_freq <- function(x) {
 }
 
 
-#' Get a dataframe with p-site offsets from a datafram eof KL divergence
+#' Get a dataframe with p-site offsets from a datafram of KL divergence
 #'
 #'
 #' @keywords Ribostan
 #' @author Dermot Harnett, \email{dermot.p.harnett@gmail.com}
 #'
-#' @param metacodondf A data frame with expected and actual rust score per position in
-#' window, codon, readlength
+#' @param kl_df  dataframe with KL divergence per readlength, position in window
+#'  around codon
 #' @param method means by which to select best offfset currently only possible value
 #' is a_max - assumes the maximum KL divergence occurs under the A site
 #'
