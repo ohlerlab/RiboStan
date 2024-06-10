@@ -523,7 +523,7 @@ load_annotation <- function(
     keep_cols = 
       c("gene_id", "transcript_id", "gene_name", "type"),
     DEFAULT_CIRC_SEQS=NULL,
-    findUORFs_args = c(minimumLength=0)
+    findUORFs_args = c(minimumLength=0, longestORF = FALSE)
     ) {
   if(is.null(DEFAULT_CIRC_SEQS)){
     DEFAULT_CIRC_SEQS <- unique(
