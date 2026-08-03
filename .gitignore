@@ -7,3 +7,17 @@ src/*.so
 src/*.dll
 .specstory/
 .vscode/
+
+# Cached vignette/test annotation & fasta downloads (regenerated on demand)
+/test.gc32.gtf
+/chr22.fa
+/chr22.fa.fai
+offsets_rustvar.tsv
+tests/testthat/test.gc32.gtf
+tests/testthat/chr22.fa
+tests/testthat/chr22.fa.fai
+tests/testthat/tmp.fa
+tests/testthat/tmp.fa.fai
+tests/testthat/tmp.shortheader.fa
+tests/testthat/tmp.shortheader.fa.fai
+tests/testthat/tmp_trcds.tsv

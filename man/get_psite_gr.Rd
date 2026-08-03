@@ -2,41 +2,43 @@
 % Please edit documentation in R/get_ritpms.R
 \name{get_psite_gr}
 \alias{get_psite_gr}
-\title{convert a granges object of footprints to a psites object}
+\title{Convert a GRanges of footprints into a psites object}
 \usage{
 get_psite_gr(rpfs, offsets_df, anno)
 }
 \arguments{
-\item{rpfs}{\itemize{
-\item granges object with positions of footprints, in transcript
-space
-}}
+\item{rpfs}{GRanges with read positions in transcript space.}
 
-\item{offsets_df}{\itemize{
-\item a data frame with numeric columns readlen,phase,offset
-}}
+\item{offsets_df}{Data frame with columns \code{readlen}, \code{phase},
+and \code{p_offset}.}
 
-\item{anno}{\itemize{
-\item an annotation object with at least one ORF per transcript,
-the function uses the 'uORF' slot if it's available
-}}
+\item{anno}{Annotation object. The \code{uORF} slot is used, if present,
+to restrict the phaseshift calibration to annotated-CDS psites.}
 }
 \value{
-a GRanges object of width-1 psites with columns readlen,
-phase and offset
+A GRanges of width-1 psites with mcols \code{orf}, \code{readlen},
+\code{phase}, \code{p_offset}, \code{read_mult}. Reads overlapping
+multiple ORFs are represented once per overlap.
 }
 \description{
-This function applies offsets to RPF data, attributing to each RPF
-an offset specific a readlength and phase. Where phase is ambigous,
-because more than one ORF overlaps the RPF, the RPF has both offsets
-applied, and in rare cases where more than one possible psite location
-applies, one is randomly selected.
+Applies P-site offsets to RPFs, attributing each RPF to every ORF it
+overlaps. A read overlapping \eqn{k} ORFs produces \eqn{k} psite rows,
+each carrying its own \code{orf} attribution together with the phase,
+read length and P-site offset associated with that ORF.
+}
+\details{
+Each psite additionally carries a \code{read_mult} integer mcol giving
+the number of ORF overlaps its source read had. Periodicity testing
+(\code{ftest_orfs}) treats every psite as full evidence for its
+attributed ORF. Quantification (\code{get_ritpms} / \code{get_read_spmat})
+row-normalises by read name so that each read contributes total weight 1
+across all its ORF attributions; nothing is double-counted in TPM space.
 }
 \examples{
 data(chr22_anno)
 data(rpfs)
 data(offsets_df)
-psites <- get_psite_gr(rpfs, offsets_df, anno)
+psites <- get_psite_gr(rpfs, offsets_df, chr22_anno)
 }
 \author{
 Dermot Harnett, \email{dermot.p.harnett@gmail.com}

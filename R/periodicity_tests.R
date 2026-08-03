@@ -92,59 +92,83 @@ ftest_orfs <- function(psites, anno, n_cores=1) {
     as.data.frame()
   spec_test_df$orf_id <- rownames(spec_test_df)
   rownames(spec_test_df) <- NULL
-  # Length-normalised spectral coefficient. sqrt(spec_power) scales with
-  # amplitude x length at freq 1/3, so dividing by length gives a per-
-  # nucleotide density of the periodic signal - which is what we use to
-  # pick between nested uORF candidates below.
+  # Length-normalised spectral coefficient, preserved from legacy output.
   orflens <- width(orfs[spec_test_df$orf_id])
   spec_test_df$spec_coef <- sqrt(spec_test_df$spec_coef) / orflens
-
-  # Prune nested uORFs that share a stop position. Nested shared-stop
-  # uORFs are forced by construction into the same reading frame, so
-  # their P-site coverage is essentially the same signal restricted to
-  # different windows. Keeping all of them inflates the BH test set with
-  # correlated redundant hits; instead we pick the one with the highest
-  # spectral density per group (sqrt(power)/length) and drop the rest
-  # BEFORE multiple-testing correction.
-  if (!is.null(anno$uORF)) {
-    uorf_ids <- names(anno$uORF)[anno$uORF]
-    is_uorf  <- spec_test_df$orf_id %in% uorf_ids
-    if (any(is_uorf)) {
-      u_orfids <- spec_test_df$orf_id[is_uorf]
-      tx  <- sub("_[0-9]+$", "", u_orfids)
-      stp <- GenomicRanges::end(orfs[u_orfids])
-      grp <- paste0(tx, "@", stp)
-      # Within each (tx, stop) group, keep exactly one winner: the ORF
-      # with the highest spec_coef. Ties (e.g. duplicated rows) are
-      # broken by the first occurrence so pruning is always decisive.
-      sc <- spec_test_df$spec_coef[is_uorf]
-      idx_in_grp <- seq_along(u_orfids)
-      winner_idx <- as.integer(stats::ave(
-        idx_in_grp, grp,
-        FUN = function(i) {
-          v <- sc[i]
-          if (all(is.na(v))) i[1] else i[which.max(v)]
-        }
-      ))
-      is_group_max <- idx_in_grp == winner_idx
-      keep <- rep(TRUE, nrow(spec_test_df))
-      keep[is_uorf] <- is_group_max
-      spec_test_df <- spec_test_df[keep, , drop = FALSE]
-    }
-  }
-
-  # Benjamini-Hochberg FDR control across the surviving (non-redundant)
-  # tested ORFs. Applied here (before NA-padding to all anno$cdsgrl rows)
-  # so only ORFs actually evaluated contribute to the correction.
+  # Benjamini-Hochberg FDR control across the tested ORFs. Applied here
+  # (before NA-padding to all anno$cdsgrl rows) so only ORFs actually
+  # evaluated contribute to the correction.
   spec_test_df$q.value <- p.adjust(spec_test_df$p.value, method = "BH")
   spec_test_df <- spec_test_df[, c("orf_id", "Fstat", "spec_coef",
                                    "p.value", "q.value")]
-  # put in NA values for things we couldn't test (or that were pruned
-  # above). Pruned uORFs end up with NA p/q and so are dropped by
-  # periodicity_filter_uORFs like any untested ORF.
+  # put in NA values for things we couldn't test
   testdf <- tibble(orf_id = names(anno$cdsgrl)) %>%
     left_join(spec_test_df, by = "orf_id")
   testdf
+}
+
+
+#' Select one uORF per nested (shared-stop) group by P-site read density
+#'
+#' Alternative start codons upstream of a shared stop (e.g. two in-frame
+#' ATGs reading into the same stop) generate uORF candidates that are
+#' nested/redundant rather than independent: their P-site coverage is the
+#' same signal seen through different windows. Testing all of them for
+#' periodicity would inflate the multiple-testing burden with correlated
+#' hits, so exactly one candidate per \code{(transcript, stop)} group is
+#' kept - the one with the highest P-site read density (P-sites per
+#' nucleotide of ORF length).
+#'
+#' This uses raw P-site counts rather than the multitaper spectral
+#' coefficient, so the redundant candidates can be dropped \emph{before}
+#' the (slow) periodicity test is run on them at all, rather than after.
+#'
+#' @keywords Ribostan
+#' @author Dermot Harnett, \email{dermot.p.harnett@gmail.com}
+#'
+#' @param psites GRanges of psites (output of \code{get_psite_gr}), with an
+#'   \code{orf} mcol.
+#' @param anno Annotation object with \code{trspacecds}.
+#' @param orf_ids Character vector of candidate uORF ids to prune among.
+#'   ORFs that do not share a \code{(transcript, stop)} group with any
+#'   other id in \code{orf_ids} are always kept.
+#' @return \code{orf_ids}, restricted to the highest-read-density member of
+#'   each nested group. Order is not preserved.
+#' @export
+#' @examples
+#' data(chr22_anno)
+#' data(rpfs)
+#' data(offsets_df)
+#' psites <- get_psite_gr(rpfs, offsets_df, chr22_anno)
+#' uorf_ids <- names(chr22_anno$uORF)[chr22_anno$uORF]
+#' survivors <- prune_nested_uorfs(psites, chr22_anno, uorf_ids)
+prune_nested_uorfs <- function(psites, anno, orf_ids) {
+  orf_ids <- unique(orf_ids)
+  if (length(orf_ids) == 0L) return(orf_ids)
+
+  orfs <- anno$trspacecds[orf_ids]
+  tx  <- sub("_[0-9]+$", "", orf_ids)
+  stp <- GenomicRanges::end(orfs)
+  grp <- paste0(tx, "@", stp)
+
+  read_counts <- tabulate(
+    match(as.character(psites$orf), orf_ids),
+    nbins = length(orf_ids)
+  )
+  density <- read_counts / width(orfs)
+
+  # Within each (tx, stop) group, keep exactly one winner: the ORF with
+  # the highest read density. Ties (e.g. no P-site coverage at all) are
+  # broken by the first occurrence so pruning is always decisive.
+  idx_in_grp <- seq_along(orf_ids)
+  winner_idx <- as.integer(stats::ave(
+    idx_in_grp, grp,
+    FUN = function(i) {
+      v <- density[i]
+      if (all(v == 0)) i[1] else i[which.max(v)]
+    }
+  ))
+  orf_ids[idx_in_grp == winner_idx]
 }
 
 
@@ -162,11 +186,15 @@ ftest_orfs <- function(psites, anno, n_cores=1) {
 #' @param n_cores  number of cores to use
 #'
 #' @details
-#' The multitaper F-test is applied to every uORF. Both the raw p-value
+#' Before the (slow) multitaper F-test is run, nested/redundant uORF
+#' candidates that share a stop position with another candidate on the
+#' same transcript are pruned down to one representative per group, by
+#' P-site read density (see \code{\link{prune_nested_uorfs}}). The
+#' F-test is then applied to every surviving uORF. Both the raw p-value
 #' and the Benjamini-Hochberg q-value (FDR-corrected across the tested
 #' uORFs) are attached to `anno$trspacecds` as mcols. When
-#' `remove = TRUE`, uORFs with `q.value >= alpha` (or whose test could
-#' not be run at all) are dropped from the annotation.
+#' `remove = TRUE`, uORFs with `q.value >= alpha` (including pruned or
+#' otherwise untested candidates) are dropped from the annotation.
 #' @return an annotation object with Fstat/spec_coef/p.value/q.value
 #'   attached per-ORF, and if `remove = TRUE` the non-periodic uORFs
 #'   filtered out.
@@ -183,7 +211,8 @@ periodicity_filter_uORFs <- function(psites, anno, remove = TRUE,
   stopifnot(!is.null(anno$uORF))
   uORFs <- anno$uORF
   uORFs <- unique(names(uORFs[uORFs]))
-  ftestdf <- ftest_orfs(psites, subset_annotation(anno, uORFs),
+  survivors <- prune_nested_uorfs(psites, anno, uORFs)
+  ftestdf <- ftest_orfs(psites, subset_annotation(anno, survivors),
                         n_cores = n_cores)
   # Initialise per-ORF metadata columns if missing. ftest_orfs now returns
   # Fstat, spec_coef, p.value, q.value; historically it returned only

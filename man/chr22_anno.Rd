@@ -11,7 +11,7 @@ An annotation object as created by load_annotation:
 \url{AnnotationHub gencode v32 annotation}
 }
 \usage{
-chr22_anno
+data(chr22_anno)
 }
 \description{
 The gencode v32 annotation, downloaded from Annotationhub()

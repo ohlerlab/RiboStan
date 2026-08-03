@@ -4,9 +4,9 @@ test_that("psite object creation works",
   data(rpfs)
   data(offsets_df)
   psites <- get_psite_gr(rpfs, offsets_df, chr22_anno)
-  # get_psite_gr now emits one psite per (read, ORF) overlap and carries
-  # a read_mult mcol recording the number of ORF overlaps per source
-  # read. See R/get_ritpms.R for details.
+  # get_psite_gr emits one psite per (read, ORF) overlap and carries a
+  # read_mult mcol recording the number of ORF overlaps per source read.
+  # See R/get_ritpms.R for details.
   expect_setequal(
     psites %>% mcols() %>% colnames(),
     c("readlen", "orf", "phase", "read_mult", "p_offset")

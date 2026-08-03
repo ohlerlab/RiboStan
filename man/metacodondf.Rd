@@ -19,7 +19,7 @@ A tibble: with 23,058 rows and 8 columns
 \url{AnnotationHub gencode v32 annotation}
 }
 \usage{
-metacodondf
+data(metacodondf)
 }
 \description{
 A data frame containing metacodon data

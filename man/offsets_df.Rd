@@ -17,7 +17,7 @@ a  tibble with 12 rows and 3 columns
 \url{AnnotationHub gencode v32 annotation}
 }
 \usage{
-offsets_df
+data(offsets_df)
 }
 \description{
 A Dataframe containing CDS-occupancy derived offsets

@@ -4,25 +4,44 @@
 \alias{periodicity_filter_uORFs}
 \title{Run Multitaper tests on a set of ORFs}
 \usage{
-periodicity_filter_uORFs(psites, anno, remove = TRUE, n_cores = 1)
+periodicity_filter_uORFs(
+  psites,
+  anno,
+  remove = TRUE,
+  alpha = 0.05,
+  n_cores = 1
+)
 }
 \arguments{
 \item{psites}{GRanges object with psite information}
 
 \item{anno}{annotation object}
 
-\item{remove}{whether to remove non-peridic uORFs}
+\item{remove}{whether to remove non-periodic uORFs}
+
+\item{alpha}{significance threshold applied to \code{q.value} (BH-corrected);
+default 0.05}
 
 \item{n_cores}{number of cores to use}
 }
 \value{
-a numeric vector with the spectral coefficient at 0.333... and the pvalue for the test
+an annotation object with Fstat/spec_coef/p.value/q.value
+attached per-ORF, and if \code{remove = TRUE} the non-periodic uORFs
+filtered out.
 }
 \description{
 Run Multitaper tests on a set of ORFs
 }
 \details{
-This function applies a multitaper test to
+Before the (slow) multitaper F-test is run, nested/redundant uORF
+candidates that share a stop position with another candidate on the
+same transcript are pruned down to one representative per group, by
+P-site read density (see \code{\link{prune_nested_uorfs}}). The
+F-test is then applied to every surviving uORF. Both the raw p-value
+and the Benjamini-Hochberg q-value (FDR-corrected across the tested
+uORFs) are attached to \code{anno$trspacecds} as mcols. When
+\code{remove = TRUE}, uORFs with \code{q.value >= alpha} (including pruned or
+otherwise untested candidates) are dropped from the annotation.
 }
 \examples{
 data(chr22_anno)

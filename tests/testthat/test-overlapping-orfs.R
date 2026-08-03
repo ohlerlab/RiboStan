@@ -1,5 +1,6 @@
 # Feature tests for overlapping-ORF handling, alt start codons, uORF
-# overlap metadata, and the nested-uORF pruning step in ftest_orfs.
+# overlap metadata, and the read-density-based nested-uORF pruning step
+# (prune_nested_uorfs, wired into periodicity_filter_uORFs).
 
 suppressPackageStartupMessages({
   library(GenomicRanges)
@@ -124,9 +125,11 @@ test_that("longestORF=TRUE logic collapses nested ORFs per stop", {
 
 
 # ---------------------------------------------------------------------------
-# .filter_uorfs: drop only exact duplicates; keep overlapping / nested ORFs
+# .filter_uorfs: drop any uORF that overlaps the annotated CDS boundary
+# (fully within, shared start, shared stop, or start-inside-CDS); keep only
+# genuinely upstream candidates that don't touch the CDS at all.
 # ---------------------------------------------------------------------------
-test_that(".filter_uorfs keeps overlapping ORFs and drops exact CDS duplicates", {
+test_that(".filter_uorfs drops uORFs that coincide with CDS boundaries", {
   mk <- function(s, e, strand = "+", seqn = "chr1") {
     GenomicRanges::GRangesList(GenomicRanges::GRanges(
       seqnames = seqn,
@@ -138,22 +141,22 @@ test_that(".filter_uorfs keeps overlapping ORFs and drops exact CDS duplicates",
   cds   <- mk(100, 200)
   names(cds) <- "cds1"
 
-  # Four candidate uORFs:
-  #  u_exact   : same start and stop as cds1    -> DROP
-  #  u_nstart  : same start, different stop     -> KEEP
-  #  u_nstop   : same stop, different start     -> KEEP (N-term extension-like)
-  #  u_inside  : entirely inside cds, different endpoints -> KEEP (internal ORF)
-  u_exact  <- mk(100, 200)
-  u_nstart <- mk(100, 250)
-  u_nstop  <- mk(50,  200)
-  u_inside <- mk(120, 180)
-  uorfs <- c(u_exact, u_nstart, u_nstop, u_inside)
-  names(uorfs) <- c("u_exact", "u_nstart", "u_nstop", "u_inside")
+  # Five candidate uORFs:
+  #  u_exact    : same start and stop as cds1               -> DROP (within)
+  #  u_nstart   : same start, different stop                -> DROP (shared start)
+  #  u_nstop    : same stop, different start                -> DROP (shared stop)
+  #  u_inside   : entirely inside cds, different endpoints  -> DROP (within)
+  #  u_upstream : entirely upstream, no overlap with cds     -> KEEP
+  u_exact    <- mk(100, 200)
+  u_nstart   <- mk(100, 250)
+  u_nstop    <- mk(50,  200)
+  u_inside   <- mk(120, 180)
+  u_upstream <- mk(10,  60)
+  uorfs <- c(u_exact, u_nstart, u_nstop, u_inside, u_upstream)
+  names(uorfs) <- c("u_exact", "u_nstart", "u_nstop", "u_inside", "u_upstream")
 
   filtered <- Ribostan:::.filter_uorfs(uorfs, cds)
-  expect_equal(sort(names(filtered)),
-               sort(c("u_nstart", "u_nstop", "u_inside")))
-  expect_false("u_exact" %in% names(filtered))
+  expect_equal(names(filtered), "u_upstream")
 })
 
 
@@ -239,10 +242,8 @@ test_that("get_psite_gr emits one psite per (read, ORF) overlap", {
   expect_true("read_mult" %in% colnames(GenomicRanges::mcols(psites)))
   expect_true(all(psites$read_mult >= 1L))
 
-  # At least some reads overlap multiple ORFs (the whole point of the
-  # refactor). chr22_anno was built with longestORF=TRUE so has no nested
-  # uORF pairs, but multi-transcript UTR/CDS overlap still produces
-  # multi-ORF reads.
+  # At least some reads overlap multiple ORFs (multi-transcript UTR/CDS
+  # overlap produces multi-ORF reads even without nested uORFs).
   expect_gt(sum(psites$read_mult > 1L), 0L)
 
   # There must be at least as many psites as there are reads that
@@ -272,21 +273,19 @@ test_that("get_read_spmat row-normalises so each read has total weight 1", {
 
 
 # ---------------------------------------------------------------------------
-# ftest_orfs: nested-uORF pruning + BH applied only to survivors
+# prune_nested_uorfs: select nested-group winner by P-site read density,
+# BEFORE the multitaper test ever runs on the losing candidate.
 # ---------------------------------------------------------------------------
-test_that("ftest_orfs prunes nested (shared-stop) uORFs by spec_coef before BH", {
+test_that("prune_nested_uorfs keeps the higher read-density member of a nested group", {
   data(chr22_anno)
   data(rpfs)
   data(offsets_df)
 
   psites <- get_psite_gr(rpfs, offsets_df, chr22_anno)
 
-  # Pick one well-covered uORF and create an exact synthetic clone of it
-  # that shares transcript prefix AND trspace end (the pruning key).
-  # The clone is created by replicating the uORF's entries in trspacecds,
-  # cdsgrl, and uORF, then duplicating its psite attributions. Identical
-  # inputs produce identical spec_coef, so which one the pruning keeps
-  # is arbitrary but exactly one must survive.
+  # Pick one well-covered uORF and create a synthetic clone of it that
+  # shares transcript prefix AND trspace end (the pruning key), i.e. a
+  # nested/shared-stop candidate.
   anno <- chr22_anno
   uorf_ids <- names(anno$uORF)[anno$uORF]
   cov_counts <- table(as.character(psites$orf))
@@ -298,40 +297,73 @@ test_that("ftest_orfs prunes nested (shared-stop) uORFs by spec_coef before BH",
   tx1    <- sub("_[0-9]+$", "", src_id)
   new_id <- paste0(tx1, "_99999")
 
-  # Clone trspacecds row
   src_gr <- anno$trspacecds[src_id]
   names(src_gr) <- new_id
   anno$trspacecds <- c(anno$trspacecds, src_gr)
 
-  # Clone cdsgrl element
+  # Give the clone 3x the source's psite coverage over the same ORF
+  # length, so it has strictly higher read density - even though it's
+  # positioned AFTER the source in orf_ids. This confirms the winner is
+  # chosen by density, not by list order.
+  src_psites <- psites[as.character(psites$orf) == src_id]
+  clone_psites <- rep(src_psites, 3)
+  clone_psites$orf <- new_id
+  psites_aug <- c(psites, clone_psites)
+
+  survivors <- prune_nested_uorfs(psites_aug, anno, c(src_id, new_id))
+  expect_equal(survivors, new_id)
+})
+
+
+test_that("periodicity_filter_uORFs prunes nested candidates before ftest_orfs runs", {
+  data(chr22_anno)
+  data(rpfs)
+  data(offsets_df)
+
+  psites <- get_psite_gr(rpfs, offsets_df, chr22_anno)
+
+  anno <- chr22_anno
+  uorf_ids <- names(anno$uORF)[anno$uORF]
+  cov_counts <- table(as.character(psites$orf))
+  cov_counts <- cov_counts[names(cov_counts) %in% uorf_ids]
+  cov_counts <- sort(cov_counts, decreasing = TRUE)
+  if (length(cov_counts) < 1L) skip("No covered uORFs available")
+  src_id <- names(cov_counts)[1]
+
+  tx1    <- sub("_[0-9]+$", "", src_id)
+  new_id <- paste0(tx1, "_99999")
+
+  src_gr <- anno$trspacecds[src_id]
+  names(src_gr) <- new_id
+  anno$trspacecds <- c(anno$trspacecds, src_gr)
+
   src_cds <- anno$cdsgrl[src_id]
   names(src_cds) <- new_id
   anno$cdsgrl <- c(anno$cdsgrl, src_cds)
 
-  # Clone uORF flag
   anno$uORF[new_id] <- TRUE
 
-  # Clone psites attributed to the source ORF
-  clones <- psites[as.character(psites$orf) == src_id]
-  clones$orf <- new_id
-  psites <- c(psites, clones)
+  # Clone gets more coverage, so it should be the survivor and the
+  # original should be the one pruned away pre-periodicity-test.
+  src_psites <- psites[as.character(psites$orf) == src_id]
+  clone_psites <- rep(src_psites, 3)
+  clone_psites$orf <- new_id
+  psites_aug <- c(psites, clone_psites)
 
-  ft <- suppressMessages(ftest_orfs(psites, anno, n_cores = 1))
+  filt <- suppressMessages(
+    periodicity_filter_uORFs(psites_aug, anno, remove = FALSE, n_cores = 1)
+  )
+  m <- as.data.frame(S4Vectors::mcols(filt$trspacecds))
+  rownames(m) <- names(filt$trspacecds)
 
-  row_a <- ft[ft$orf_id == src_id, ]
-  row_b <- ft[ft$orf_id == new_id, ]
-  expect_equal(nrow(row_a), 1L)
-  expect_equal(nrow(row_b), 1L)
-
-  # Exactly one of the two must have been pruned (NA p/q.value). The
-  # pruned side is dropped from spec_test_df before BH, so its row gets
-  # NA across p.value and q.value in the final left_join output.
-  na_count <- is.na(row_a$q.value) + is.na(row_b$q.value)
-  expect_equal(na_count, 1L)
+  # The pruned candidate (src_id) never reached ftest_orfs, so it has NA
+  # p/q.value; the survivor (new_id) was tested and has a real q.value.
+  expect_true(is.na(m[src_id, "q.value"]))
+  expect_false(is.na(m[new_id, "q.value"]))
 })
 
 
-test_that("ftest_orfs q.value is BH only over non-pruned survivors", {
+test_that("ftest_orfs q.value is the BH adjustment of p.value across tested ORFs", {
   data(chr22_anno)
   data(rpfs)
   data(offsets_df)
@@ -339,7 +371,6 @@ test_that("ftest_orfs q.value is BH only over non-pruned survivors", {
 
   ft <- suppressMessages(ftest_orfs(psites, chr22_anno, n_cores = 1))
   surv <- ft[!is.na(ft$p.value), ]
-  # q.value is BH of p.value on the set of surviving rows.
   expect_equal(surv$q.value, p.adjust(surv$p.value, method = "BH"),
                tolerance = 1e-12)
 })

@@ -196,11 +196,9 @@ mergeseqlevels <- function(gr1, gr2) {
 #' Each psite additionally carries a \code{read_mult} integer mcol giving
 #' the number of ORF overlaps its source read had. Periodicity testing
 #' (\code{ftest_orfs}) treats every psite as full evidence for its
-#' attributed ORF (so nested / overlapping ORFs both get full coverage).
-#' Quantification (\code{get_ritpms} / \code{get_read_spmat}) row-
-#' normalises by read name so that each read contributes total weight 1
-#' across all its ORF attributions; nothing is double-counted in TPM
-#' space.
+#' attributed ORF. Quantification (\code{get_ritpms} / \code{get_read_spmat})
+#' row-normalises by read name so that each read contributes total weight 1
+#' across all its ORF attributions; nothing is double-counted in TPM space.
 #'
 #' @keywords Ribostan
 #' @author Dermot Harnett, \email{dermot.p.harnett@gmail.com}
@@ -380,9 +378,7 @@ get_read_spmat <- function(psites, anno) {
   # One entry per (read, orf) psite. Row-normalising afterwards ensures
   # every read contributes total weight 1 across its ORFs - so reads that
   # overlap multiple ORFs are EM-split rather than double-counted in TPM
-  # space. This holds both for the legacy one-psite-per-read output and
-  # for the current per-(read,orf) emission from get_psite_gr; it also
-  # remains correct if upstream filtering has dropped some overlaps.
+  # space.
   spmat <- Matrix::sparseMatrix(
     i = names(psites) %>% id(),
     j = psites$orf %>% id(),

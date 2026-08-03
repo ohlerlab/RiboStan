@@ -78,6 +78,41 @@ chr22_anno <- load_annotation(anno_file, fafile, add_uorfs=TRUE)
 rpfs <- get_readgr(testbam, chr22_anno)
 ```
 
+## Discovering uORFs
+
+uORF discovery is handled internally by `find_uorfs()`, a self-contained
+replacement for `ORFik::findUORFs`. It scans each transcript's 5' UTR (and, if
+`cds` is supplied as it is here, a little way into the start of the CDS) for
+start -> stop codon pairs. By default it only searches for `"ATG"` starts,
+matching the annotated-CDS convention; candidates that coincide with the
+annotated CDS boundary (fully within it, or sharing its start or stop) are
+dropped, since these aren't genuinely distinct uORFs. Callers can opt in to
+non-canonical start codons (e.g. `startCodon = c("ATG","CTG","GTG")`) via
+`findUORFs_args`, but should expect substantially more candidate uORFs as a
+result.
+
+Every element of `chr22_anno$trspacecds` marked `TRUE` in `chr22_anno$uORF` is
+a discovered uORF, with a few extra mcols recording how it relates to the
+annotated CDS of its transcript:
+
+```{r inspectuorfs, message=FALSE}
+uorf_ids <- names(chr22_anno$uORF)[chr22_anno$uORF]
+dplyr::n_distinct(sub("_[0-9]+$", "", uorf_ids)) # transcripts with >=1 uORF
+length(uorf_ids) # total number of uORFs found
+
+knitr::kable(head(
+  as.data.frame(mcols(chr22_anno$trspacecds[uorf_ids])
+    [, c("overlaps_cds", "overlap_frame", "out_of_phase")])
+))
+```
+
+`overlaps_cds` flags uORFs whose genomic footprint overlaps the main CDS of
+some transcript (this happens when a uORF only partially overlaps the CDS,
+rather than sharing its exact start/stop); `overlap_frame` and `out_of_phase`
+then describe whether that overlap is in-frame with the CDS. This is purely
+informational at this stage - actual periodicity-based filtering happens
+later, in `periodicity_filter_uORFs()`.
+
 
 # From RPF Alignments to P-sites
 An RPF alignment is ambiguous with respect to the position of the underlying
@@ -89,9 +124,16 @@ exist to do this. Ribostan makes use of the method described by Ahmed et al
 maximizes the number of reads within the CDS. The function `get_offsets()`
 creates a data frame describing the optimal offsets using this process. And the
 function `get_psite_gr()` applies these offsets to the alignments, annotating
-their ORF of origin (which is chosen randomly in the rare case where a
-footprint's P-site plausibly overlaps more than one ORF since more than one
-phase/offset is possible).
+their ORF of origin. Since a footprint's P-site can plausibly overlap more
+than one ORF (e.g. a uORF nested within, or overlapping, the main CDS),
+`get_psite_gr()` emits one psite row per (read, ORF) overlap rather than
+picking a single "winning" ORF: a read overlapping \(k\) ORFs produces
+\(k\) rows, each tagged with a `read_mult` mcol giving the number of ORF
+overlaps its source read had. Downstream quantification
+(`get_ritpms()`/`get_read_spmat()`) row-normalises by read name so that each
+read's total contribution across all its ORF attributions still sums to 1 -
+nothing is double-counted, but ambiguous reads are correctly fractionally
+assigned rather than arbitrarily assigned to just one ORF.
 
 ```{r determinepsites, message=FALSE}
 # Determine offsets by maximum CDS occupancy
@@ -139,10 +181,19 @@ ORF periodicity is a good diagnostic tool for identifying bona fide translation
 (non periodic noise such as RPFs with ribosome-like footprints can generate
 ribo-seq signal in untranslated regions). The function
 `periodicity_filter_uORFs()` filters the uORFs found by `load_annotation()` by
-searching for periodicity in P-sites. The function `get_ritpms()` furthermore
-carries out optimization of ribosome densities, and similarly to software like
-Salmon or RSEM, performs isoform-aware quantification. Multimapping P-sites can
-then be sampled according to these TPMs, to give an estimate of true ribosome
+searching for periodicity in P-sites. Before running the (relatively
+expensive) periodicity test, it first calls `prune_nested_uorfs()`, which
+collapses each group of uORFs that share a transcript and a stop codon (i.e.
+one is nested within, or a truncation of, another) down to a single
+representative: the one with the highest P-site read density
+(reads / ORF length). This avoids spending time periodicity-testing redundant
+uORF candidates that could never both be real, distinct translation products.
+The F-test is then applied only to the surviving, non-redundant uORFs, and
+both the raw p-value and a Benjamini-Hochberg-corrected q-value are attached
+to the annotation. The function `get_ritpms()` furthermore carries out
+optimization of ribosome densities, and similarly to software like Salmon or
+RSEM, performs isoform-aware quantification. Multimapping P-sites can then be
+sampled according to these TPMs, to give an estimate of true ribosome
 locations.
 
 ```{r quantification, message=FALSE}

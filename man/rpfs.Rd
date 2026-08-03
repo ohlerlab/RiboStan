@@ -14,7 +14,7 @@ GRanges object with 63346 ranges and 1 metadata column:
 \url{Simulated data}
 }
 \usage{
-rpfs
+data(rpfs)
 }
 \description{
 GRanges object with 63346 ranges and 1 metadata column:

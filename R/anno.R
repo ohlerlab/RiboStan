@@ -354,16 +354,30 @@ get_trspace_cds <- function(cdsgrl, exonsgrl) {
       cds_trs        <- cdsgrl[first_cds]
       # pmapToTranscripts may return GRanges or GRangesList depending on
       # input; coerce to GRangesList so indexing/unlist behave uniformly.
-      mapped <- GenomicFeatures::pmapToTranscripts(
+      # pmapToTranscripts() internally raises a benign "out-of-bound
+      # ranges" warning for every uORF start that doesn't map into the
+      # target CDS (its own way of representing a zero-width "no-hit"
+      # range) - expected and harmless here since those non-hits are
+      # explicitly filtered out below via the width check.
+      mapped <- suppressWarnings(GenomicFeatures::pmapToTranscripts(
         uorf_starts_gr, cds_trs
-      )
+      ))
+      # When x (uorf_starts_gr) is a plain GRanges, pmapToTranscripts()
+      # returns one row per query, parallel to x, and signals "start does
+      # not map into this CDS" with a *zero-width* range rather than by
+      # omitting the row - elementNROWS() on such a GRanges (or on it
+      # wrapped 1-row-per-element into a GRangesList) is therefore always
+      # 1 and never catches non-hits. Detect non-hits via width instead
+      # before wrapping.
       if (is(mapped, "GRanges")) {
+        has_map <- GenomicRanges::width(mapped) > 0L
         mapped <- GenomicRanges::GRangesList(
           lapply(seq_along(mapped), function(i) mapped[i])
         )
+      } else {
+        # Keep only uORF hits whose start actually maps into the CDS
+        has_map <- S4Vectors::elementNROWS(mapped) > 0L
       }
-      # Keep only uORF hits whose start actually maps into the CDS
-      has_map <- S4Vectors::elementNROWS(mapped) > 0L
       frame_vals <- if (any(has_map)) {
         mr <- unlist(mapped[has_map], use.names = FALSE)
         ((GenomicRanges::start(mr) - 1L) %% 3L)
@@ -671,7 +685,7 @@ load_annotation <- function(
   if (add_uorfs) {
     message("adding uORFs..")
     anno$phase <- NULL
-    txdb <- GenomicFeatures::makeTxDbFromGRanges(anno)
+    txdb <- txdbmaker::makeTxDbFromGRanges(anno)
     fiveutrs <- GenomicFeatures::fiveUTRsByTranscript(txdb, use.names = TRUE)
     validutrs <- names(fiveutrs)%>%intersect(names(cdsgrl))
     fiveutrs <- fiveutrs[validutrs]

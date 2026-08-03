@@ -11,7 +11,7 @@ load_annotation(
   ignore_orf_validity = FALSE,
   keep_cols = c("gene_id", "transcript_id", "gene_name", "type"),
   DEFAULT_CIRC_SEQS = NULL,
-  findUORFs_args = c(minimumLength = 0)
+  findUORFs_args = c(minimumLength = 0, longestORF = FALSE)
 )
 }
 \arguments{
@@ -28,7 +28,8 @@ missing a valid stop codon}
 
 \item{DEFAULT_CIRC_SEQS}{default chromsoomes to treat as circular}
 
-\item{findUORFs_args}{Additional arguments to pass to ORFik::findUORFs}
+\item{findUORFs_args}{Additional arguments to pass to \code{find_uorfs}
+(e.g. \code{c(minimumLength=0, longestORF=FALSE)})}
 }
 \value{
 a list containing annotation objects used by other functions.
