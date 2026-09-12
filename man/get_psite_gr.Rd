@@ -4,7 +4,7 @@
 \alias{get_psite_gr}
 \title{Convert a GRanges of footprints into a psites object}
 \usage{
-get_psite_gr(rpfs, offsets_df, anno)
+get_psite_gr(rpfs, offsets_df, anno, apply_phase_shiftdf = TRUE)
 }
 \arguments{
 \item{rpfs}{GRanges with read positions in transcript space.}
@@ -14,6 +14,12 @@ and \code{p_offset}.}
 
 \item{anno}{Annotation object. The \code{uORF} slot is used, if present,
 to restrict the phaseshift calibration to annotated-CDS psites.}
+
+\item{apply_phase_shiftdf}{If \code{TRUE} (default), apply Ribostan's
+CDS-calibrated phase reranking after the P-site offset step when it
+increases aggregate three-phase CDS periodicity without reducing phase-0
+CDS signal. Set \code{FALSE} to match RiboTaper's own P-site placement
+(metagene offset only, no post-hoc phase shift).}
 }
 \value{
 A GRanges of width-1 psites with mcols \code{orf}, \code{readlen},

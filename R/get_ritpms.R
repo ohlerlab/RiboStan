@@ -65,9 +65,20 @@ get_readlens <- function(readlens) {
 #' Defaults to \code{TRUE}
 #' @param which Select which reads to include (e.g. those that overlap
 #'     with start and stop positions)
+#' @param multimap How to handle multi-mapping reads (those aligning to more
+#'   than one locus): \code{"all"} (default) keeps every alignment record,
+#'   matching the aligner's own NH-tag-based multi-mapping count and letting
+#'   downstream quantification (\code{\link{get_read_spmat}}) split each
+#'   read's weight across its loci; \code{"primary"} keeps only each read's
+#'   primary alignment record, matching RiboTaper's \code{RIBO_best.bam}
+#'   (\code{samtools view -F 0x100}); \code{"unique"} keeps only reads that
+#'   have exactly one alignment record (NH == 1, falling back to 1 - i.e.
+#'   treated as unique - when the aligner does not set an NH tag), matching
+#'   RiboTaper's \code{RIBO_unique.bam}.
 #' @return This function returns a granges object with the read names in the
-#' names slot and a metadata column
-#' denoting readlength.
+#' names slot and metadata columns denoting readlength and NH (number of
+#' alignment loci reported for that read by the aligner, defaulting to 1
+#' when the aligner does not set an NH tag).
 #'
 #' @details This function reads in a bam file containing ribosomal footprints.
 #' It uses only reads without splice sites and reads which align to the positive
@@ -75,14 +86,18 @@ get_readlens <- function(readlens) {
 #'
 #' @seealso \code{\link{get_cds_reads}}, \code{\link{get_readlens}}
 
-read_ribobam <- function(ribobam, which, strip_seqnames = TRUE) {
+read_ribobam <- function(ribobam, which, strip_seqnames = TRUE,
+                         multimap = c("all", "primary", "unique")) {
   # What does which do here? - Gabriel
   #
+  multimap <- match.arg(multimap)
   flags <- Rsamtools::scanBamFlag(
     isUnmappedQuery = FALSE,
-    isMinusStrand = FALSE
+    isMinusStrand = FALSE,
+    isSecondaryAlignment = if (multimap == "primary") FALSE else NA
   )
-  bparam <- Rsamtools::ScanBamParam(simpleCigar = TRUE, flags)
+  bparam <- Rsamtools::ScanBamParam(flag = flags, simpleCigar = TRUE,
+                                    tag = "NH")
   ribogr <- GenomicAlignments::readGAlignments(
     ribobam,
     use.names = TRUE, param = bparam
@@ -94,6 +109,16 @@ read_ribobam <- function(ribobam, which, strip_seqnames = TRUE) {
   ribogr <- ribogr[wfilt]
   # this is the number get_bamdf gets in py 4628644
   mcols(ribogr)$readlen <- GenomicAlignments::qwidth(ribogr)
+  # NH ("number of hits") is set by most aligners (e.g. STAR) on every
+  # alignment record of a read, primary and secondary alike; a read with
+  # no NH tag at all (e.g. some non-standard aligners) is treated as
+  # uniquely-mapping so single-mapper-only BAMs behave unchanged.
+  nh <- mcols(ribogr)$NH
+  mcols(ribogr)$NH <- if (is.null(nh)) rep(1L, length(ribogr)) else
+    as.integer(ifelse(is.na(nh), 1L, nh))
+  if (multimap == "unique") {
+    ribogr <- ribogr[mcols(ribogr)$NH == 1L]
+  }
   ribogr <- as(ribogr, "GenomicRanges")
   # strip seqnames for when bam files contains a large fasta header
   if (strip_seqnames) {
@@ -208,6 +233,11 @@ mergeseqlevels <- function(gr1, gr2) {
 #'   and \code{p_offset}.
 #' @param anno Annotation object. The \code{uORF} slot is used, if present,
 #'   to restrict the phaseshift calibration to annotated-CDS psites.
+#' @param apply_phase_shiftdf If \code{TRUE} (default), apply Ribostan's
+#'   CDS-calibrated phase reranking after the P-site offset step when it
+#'   increases aggregate three-phase CDS periodicity without reducing phase-0
+#'   CDS signal. Set \code{FALSE} to match RiboTaper's own P-site placement
+#'   (metagene offset only, no post-hoc phase shift).
 #' @return A GRanges of width-1 psites with mcols \code{orf}, \code{readlen},
 #'   \code{phase}, \code{p_offset}, \code{read_mult}. Reads overlapping
 #'   multiple ORFs are represented once per overlap.
@@ -217,7 +247,7 @@ mergeseqlevels <- function(gr1, gr2) {
 #' data(offsets_df)
 #' psites <- get_psite_gr(rpfs, offsets_df, chr22_anno)
 #' @export
-get_psite_gr <- function(rpfs, offsets_df, anno) {
+get_psite_gr <- function(rpfs, offsets_df, anno, apply_phase_shiftdf = TRUE) {
   orfs <- c(anno$trspacecds)
   #
   rpfs <- mergeseqlevels(rpfs, orfs)
@@ -258,6 +288,10 @@ get_psite_gr <- function(rpfs, offsets_df, anno) {
     shift(., .$p_offset)
   psites <- psites[!is_out_of_bounds(psites)]
 
+  if (!apply_phase_shiftdf) {
+    return(psites)
+  }
+
   # Phaseshift calibration:
   #   The shiftdf maps (readlen, phase) -> a shift in {0,1,2} by rank-order
   #   of counts. This must be calibrated on data with STRONG periodicity
@@ -265,7 +299,9 @@ get_psite_gr <- function(rpfs, offsets_df, anno) {
   #   uORFs, novel ORFs, or near-uniform null data), small count
   #   fluctuations give essentially arbitrary rank assignments and the
   #   downstream F-test becomes mis-calibrated (~14% false positives at
-  #   p<0.05 on pure null data instead of the nominal 5%).
+  #   p<0.05 on pure null data instead of the nominal 5%). Compare the
+  #   aggregate three-phase concentration before and after reranking, while
+  #   requiring that phase-0 support does not decrease.
   cds_ids <- if (!is.null(anno$uORF)) {
     names(anno$uORF)[!anno$uORF]
   } else {
@@ -273,16 +309,55 @@ get_psite_gr <- function(rpfs, offsets_df, anno) {
   }
   calib_mask <- as.character(psites$orf) %in% cds_ids
   calib_mcols <- if (any(calib_mask)) {
-    mcols(psites)[calib_mask, c("phase", "readlen")]
+    mcols(psites)[calib_mask, c("phase", "readlen", "p_offset")]
   } else {
-    mcols(psites)[, c("phase", "readlen")]
+    mcols(psites)[, c("phase", "readlen", "p_offset")]
   }
   shiftdf <- as.data.frame(calib_mcols) %>%
     dplyr::count(.data$phase, .data$readlen) %>%
+    tidyr::complete(
+      .data$readlen,
+      phase = 0:2,
+      fill = list(n = 0L)
+    ) %>%
     group_by(.data$readlen) %>%
-    mutate(shft = rank(-.data$n) - 1) %>%
+    mutate(
+      candidate_frame = rank(-.data$n, ties.method = "first") - 1L,
+      candidate_frame = if (all(.data$n > 0L)) {
+        .data$candidate_frame
+      } else {
+        .data$phase
+      }
+    ) %>%
     ungroup() %>%
-    select("phase", "readlen", "shft")
+    left_join(
+      unique(as.data.frame(calib_mcols)[
+        , c("phase", "readlen", "p_offset")
+      ]),
+      by = c("phase", "readlen")
+    ) %>%
+    mutate(
+      baseline_frame = (.data$phase + .data$p_offset) %% 3L,
+      candidate_shft = (.data$candidate_frame - .data$p_offset) %% 3L
+    )
+
+  phase_score <- function(frame, n) {
+    counts <- vapply(0:2, function(value) sum(n[frame == value]), numeric(1))
+    sum((counts - mean(counts))^2)
+  }
+  baseline_score <- phase_score(shiftdf$baseline_frame, shiftdf$n)
+  candidate_score <- phase_score(shiftdf$candidate_frame, shiftdf$n)
+  baseline_phase0 <- sum(shiftdf$n[shiftdf$baseline_frame == 0L])
+  candidate_phase0 <- sum(shiftdf$n[shiftdf$candidate_frame == 0L])
+  apply_candidate <- candidate_phase0 > baseline_phase0 ||
+    (candidate_phase0 == baseline_phase0 &&
+       candidate_score > baseline_score)
+  shiftdf$shft <- if (apply_candidate) {
+    shiftdf$candidate_shft
+  } else {
+    shiftdf$phase
+  }
+  shiftdf <- shiftdf %>% select("phase", "readlen", "shft")
 
   # Order-preserving lookup. merge() was used previously which sorts by
   # the join keys and mis-aligns the shft vector with psites, giving an
@@ -315,6 +390,9 @@ get_psite_gr <- function(rpfs, offsets_df, anno) {
 #' @param strip_seqnames  whether the function should remove all text after the
 #' first '|', useful if aligning to gencode fastas Defaults to \code{TRUE}
 #' @param offsets_df - a data frame with numeric columns readlen,phase,offset
+#' @param multimap How to handle multi-mapping reads; see
+#'   \code{\link{read_ribobam}} for the three modes (\code{"all"},
+#'   \code{"primary"}, \code{"unique"}). Default \code{"all"}.
 #'
 #' @return This function returns a granges object with the read names in the
 #' names slot and a metadata column
@@ -331,7 +409,10 @@ get_psite_gr <- function(rpfs, offsets_df, anno) {
 #' rpfs <- get_readgr(testbam, chr22_anno)
 #' @export
 
-get_readgr <- function(ribobam, anno, offsets_df = NULL, startstop = FALSE, strip_seqnames = TRUE) {
+get_readgr <- function(ribobam, anno, offsets_df = NULL, startstop = FALSE,
+                       strip_seqnames = TRUE,
+                       multimap = c("all", "primary", "unique")) {
+  multimap <- match.arg(multimap)
   bamseqnames <- seqinfo(Rsamtools::BamFile(ribobam))@seqnames
   if (strip_seqnames) bamseqnames <- str_replace(bamseqnames, "\\|.*", "")
   orf_trs <- unlist(unique(seqnames(anno$trspacecds)))
@@ -348,7 +429,7 @@ get_readgr <- function(ribobam, anno, offsets_df = NULL, startstop = FALSE, stri
   } else {
     which <- NULL
   }
-  cov <- read_ribobam(ribobam, which)
+  cov <- read_ribobam(ribobam, which, multimap = multimap)
   if (!is.null(offsets_df)) {
     cov <- get_psite_gr(cov, offsets_df, anno)
   } else {
@@ -534,6 +615,15 @@ sample_cols_spmat <- function(spmat, return_mat = TRUE) {
 #' @export
 
 get_ritpms <- function(psites, anno) {
+  if (!is.null(anno$uORF) && any(anno$uORF) &&
+      !isTRUE(anno$uORF_periodicity_filtered)) {
+    warning(
+      "Annotation contains uORF sequence candidates that have not passed ",
+      "periodicity_filter_uORFs(); run that function (or prepare_ribostan_anno) ",
+      "before treating uORFs as translation-supported.",
+      call. = FALSE
+    )
+  }
   psites <- psites%>%subset(orf %in% names(anno$trspacecds))
   # quantify_orfs
   spmat <- get_read_spmat(psites, anno)

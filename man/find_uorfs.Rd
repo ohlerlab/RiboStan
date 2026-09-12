@@ -10,7 +10,7 @@ find_uorfs(
   startCodon = "ATG",
   stopCodons = c("TAA", "TAG", "TGA"),
   longestORF = FALSE,
-  minimumLength = 0L,
+  minimumLength = 3L,
   cds = NULL
 )
 }
@@ -34,8 +34,9 @@ uORFs found.}
 each stop codon position.}
 
 \item{minimumLength}{Integer; minimum body length in nucleotides between the
-end of the start codon and the beginning of the stop codon.  \code{0}
-(the default) accepts any ORF consisting of just a start and a stop.}
+end of the start codon and the beginning of the stop codon.  The default
+(\code{3}) requires at least one in-frame codon between start and stop,
+matching RiboTaper's minimum track length (\code{length > 5} nt).}
 
 \item{cds}{\code{GRangesList} of CDS exons.  When supplied, the CDS is
 appended to the 5' UTR search space and detected ORFs that overlap the

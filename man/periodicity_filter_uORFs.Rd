@@ -2,14 +2,18 @@
 % Please edit documentation in R/periodicity_tests.R
 \name{periodicity_filter_uORFs}
 \alias{periodicity_filter_uORFs}
-\title{Run Multitaper tests on a set of ORFs}
+\title{Require periodic RPF signal for uORF calls}
 \usage{
 periodicity_filter_uORFs(
   psites,
   anno,
   remove = TRUE,
   alpha = 0.05,
-  n_cores = 1
+  min_psites = 6L,
+  n_cores = 1,
+  nested_rule = c("ribotaper", "density"),
+  fdr_correct = TRUE,
+  min_frame_frac = 0
 )
 }
 \arguments{
@@ -17,31 +21,89 @@ periodicity_filter_uORFs(
 
 \item{anno}{annotation object}
 
-\item{remove}{whether to remove non-periodic uORFs}
+\item{remove}{whether to remove uORFs that fail the translation-support
+criteria (default \code{TRUE}). When \code{FALSE}, all sequence candidates
+are kept and periodicity statistics are attached as mcols only.}
 
-\item{alpha}{significance threshold applied to \code{q.value} (BH-corrected);
-default 0.05}
+\item{alpha}{significance threshold; applied to \code{q.value} when
+\code{fdr_correct = TRUE} (default), or to the raw \code{p.value} when
+\code{fdr_correct = FALSE}. Default 0.05.}
+
+\item{min_psites}{minimum number of P-sites overlapping a uORF for it to
+count as translation-supported (default \code{6}, matching RiboTaper's
+\code{P_sites_sum > 5} filter). Set to \code{0L} to disable.}
 
 \item{n_cores}{number of cores to use}
+
+\item{nested_rule}{how to pick one representative per nested (shared-stop)
+group of uORF candidates:
+\describe{
+\item{\code{"density"}}{\code{\link{prune_nested_uorfs}}
+picks the highest-P-site-density candidate \emph{before} the
+(slow) F-test runs, so only one candidate per group is ever
+tested. Cheaper, but not what RiboTaper does.}
+\item{\code{"ribotaper"} (default)}{every distinct candidate locus in every group
+is F-tested first, then \code{\link{select_ribotaper_nested_uorfs}} applies
+RiboTaper's own upstream-ATG-with-signal rule post-hoc. Matches
+RiboTaper exactly but is more expensive (tests every distinct ATG
+locus, not one representative per group) and, because
+\code{\link{ftest_orfs}}'s BH correction runs across that larger tested
+set, is normally
+paired with \code{fdr_correct = FALSE} (RiboTaper itself does not
+FDR-correct).}
+}}
+
+\item{fdr_correct}{Whether the \code{remove = TRUE} / significance decision
+uses the Benjamini-Hochberg \code{q.value} (default \code{TRUE}) or the
+raw, uncorrected \code{p.value} (\code{FALSE}). RiboTaper's own
+published threshold is a raw \code{p < 0.05} per candidate with no
+multiple-testing correction; Ribostan defaults to BH-corrected q-values
+because it tests many more candidates genome-wide. Both p.value and
+q.value are always attached as mcols regardless of this setting.}
+
+\item{min_frame_frac}{Minimum fraction of a uORF's P-sites that must fall
+in its own reading frame (default \code{0}, i.e. disabled/backward
+compatible). RiboTaper requires this fraction to exceed \code{0.5}
+before a candidate's periodicity p-value counts at all (see
+\code{\link{ftest_orfs}}'s \code{pct_inframe}) - the multitaper F-test
+alone detects 3-nt periodicity regardless of which of the 3 possible
+phases carries it, so without this gate a candidate can be "periodic"
+while most of its signal is actually in a different frame than its own
+start codon implies. Set to \code{0.5} to match RiboTaper exactly; also
+passed to \code{\link{select_ribotaper_nested_uorfs}} when
+\code{nested_rule = "ribotaper"} so group-membership eligibility uses
+the same gate.}
 }
 \value{
-an annotation object with Fstat/spec_coef/p.value/q.value
-attached per-ORF, and if \code{remove = TRUE} the non-periodic uORFs
-filtered out.
+an annotation object with
+locus-level Fstat/spec_coef/p.value/q.value/n_psites/pct_inframe and locus
+identity metadata attached per transcript alias,
+\code{uORF_periodicity_filtered = TRUE}, and if \code{remove = TRUE} only
+translation-supported uORF aliases retained.
 }
 \description{
-Run Multitaper tests on a set of ORFs
+Run multitaper 3-nt periodicity tests on uORF candidates and keep only
+those with translation-supported RPF signal.
 }
 \details{
-Before the (slow) multitaper F-test is run, nested/redundant uORF
-candidates that share a stop position with another candidate on the
-same transcript are pruned down to one representative per group, by
-P-site read density (see \code{\link{prune_nested_uorfs}}). The
-F-test is then applied to every surviving uORF. Both the raw p-value
-and the Benjamini-Hochberg q-value (FDR-corrected across the tested
-uORFs) are attached to \code{anno$trspacecds} as mcols. When
-\code{remove = TRUE}, uORFs with \code{q.value >= alpha} (including pruned or
-otherwise untested candidates) are dropped from the annotation.
+Ribostan uORF calls require periodic RPF signal, analogous to RiboTaper:
+sequence candidates from \code{\link{load_annotation}} are not treated as
+bona fide uORFs until this function (or \code{\link{prepare_ribostan_anno}})
+is run on P-sites derived from ribo-seq data.
+
+Nested/redundant uORF candidates that share a stop position with another
+candidate on the same transcript are collapsed to one representative per
+group, by \code{nested_rule}. The F-test is then applied to every
+surviving uORF ("density") or to every raw candidate ("ribotaper"). Both
+the raw p-value and the Benjamini-Hochberg q-value (FDR-corrected across
+the unique tested genomic ORF loci) are propagated to every compatible
+transcript alias and attached to \code{anno$trspacecds} as mcols, along with
+\code{n_psites}, \code{pct_inframe}, \code{orf_locus_id},
+\code{locus_representative}, \code{n_locus_aliases}, and
+\code{compatible_orf_ids}. When \code{remove = TRUE},
+uORFs that fail the significance test (per \code{fdr_correct}), fall below
+\code{min_psites} or \code{min_frame_frac}, or were pruned/untested are
+dropped from the annotation.
 }
 \examples{
 data(chr22_anno)

@@ -11,7 +11,7 @@ load_annotation(
   ignore_orf_validity = FALSE,
   keep_cols = c("gene_id", "transcript_id", "gene_name", "type"),
   DEFAULT_CIRC_SEQS = NULL,
-  findUORFs_args = c(minimumLength = 0, longestORF = FALSE)
+  findUORFs_args = c(minimumLength = 3, longestORF = FALSE)
 )
 }
 \arguments{
@@ -29,7 +29,9 @@ missing a valid stop codon}
 \item{DEFAULT_CIRC_SEQS}{default chromsoomes to treat as circular}
 
 \item{findUORFs_args}{Additional arguments to pass to \code{find_uorfs}
-(e.g. \code{c(minimumLength=0, longestORF=FALSE)})}
+(e.g. \code{c(minimumLength=3, longestORF=FALSE)}). The default
+\code{minimumLength=3} matches RiboTaper's minimum ORF track length
+(\code{length > 5} nt).}
 }
 \value{
 a list containing annotation objects used by other functions.
@@ -39,8 +41,9 @@ Get a set of filtered cds from an imported GTF GRanges
 }
 \details{
 This takes only coding sequences which are a multiple of 3bp and
-have a start and a stop on either end. it always returns coding sequences
-without the stops, regardless of their extent in the input.
+have a start and a stop on either end. Annotated CDS ranges exclude their
+stop codons; uORF ranges retain the first stop-codon nucleotide to match
+RiboTaper's periodicity-test window.
 }
 \examples{
 gtf <- system.file("extdata", "gcv37.anno.chr22.gtf",

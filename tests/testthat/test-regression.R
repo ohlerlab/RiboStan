@@ -246,9 +246,8 @@ test_that("ftest_orfs only produces non-NA results for ORFs present in psites", 
 # Feature: ftest_orfs now reports both raw p.value and BH-corrected q.value.
 # periodicity_filter_uORFs filters on q.value (FDR) rather than raw p-value.
 #
-# Regression: verify both columns exist, q.value == BH(p.value) among tested
-# ORFs, q.value >= p.value elementwise, and filtering respects the alpha
-# argument.
+# Regression: verify both columns exist, q.value == BH(p.value) among unique
+# tested loci, aliases inherit the locus q.value, and filtering respects alpha.
 # ---------------------------------------------------------------------------
 test_that("ftest_orfs reports BH-corrected q.value alongside p.value", {
   data(chr22_anno)
@@ -263,9 +262,16 @@ test_that("ftest_orfs reports BH-corrected q.value alongside p.value", {
   tested <- ft[!is.na(ft$p.value), ]
   expect_gt(nrow(tested), 50)
 
-  # q.value should be the BH adjustment of p.value (computed on tested rows)
-  expected_q <- p.adjust(tested$p.value, method = "BH")
-  expect_equal(tested$q.value, expected_q, tolerance = 1e-12)
+  # q.value should be the BH adjustment of one p.value per genomic ORF locus.
+  unique_loci <- tested[tested$locus_representative, ]
+  expected_q <- p.adjust(unique_loci$p.value, method = "BH")
+  expect_equal(unique_loci$q.value, expected_q, tolerance = 1e-12)
+  expect_equal(
+    tested$q.value,
+    unique_loci$q.value[match(tested$orf_locus_id,
+                              unique_loci$orf_locus_id)],
+    tolerance = 0
+  )
 
   # BH-adjusted q-values are always >= raw p-values
   expect_true(all(tested$q.value >= tested$p.value - 1e-12))
@@ -305,4 +311,77 @@ test_that("periodicity_filter_uORFs uses q.value with the alpha argument", {
                              remove = TRUE, alpha = 0.50, n_cores = 1)
   )
   expect_lte(sum(filt_strict$uORF), sum(filt_loose$uORF))
+})
+
+
+test_that("periodicity_filter_uORFs enforces min_psites for translation support", {
+  data(chr22_anno)
+  data(rpfs)
+  data(offsets_df)
+
+  psites <- get_psite_gr(rpfs, offsets_df, chr22_anno)
+  filt_none <- suppressMessages(
+    periodicity_filter_uORFs(psites, chr22_anno,
+                             remove = FALSE, min_psites = 0L, n_cores = 1)
+  )
+  expect_true("n_psites" %in% colnames(
+    GenomicRanges::mcols(filt_none$trspacecds)
+  ))
+  expect_true(isTRUE(filt_none$uORF_periodicity_filtered))
+
+  uorf_ids <- names(filt_none$uORF)[filt_none$uORF]
+  tested <- uorf_ids[
+    !is.na(GenomicRanges::mcols(filt_none$trspacecds[uorf_ids])$q.value) &
+      GenomicRanges::mcols(filt_none$trspacecds[uorf_ids])$q.value < 0.05
+  ]
+  if (length(tested) >= 2L) {
+    high_cov <- tested[
+      GenomicRanges::mcols(filt_none$trspacecds[tested])$n_psites >= 6L
+    ]
+    filt_hi <- suppressMessages(
+      periodicity_filter_uORFs(psites, chr22_anno,
+                               remove = TRUE, min_psites = 6L, n_cores = 1)
+    )
+    filt_lo <- suppressMessages(
+      periodicity_filter_uORFs(psites, chr22_anno,
+                               remove = TRUE, min_psites = 0L, n_cores = 1)
+    )
+    expect_lte(sum(filt_hi$uORF), sum(filt_lo$uORF))
+    if (length(high_cov) > 0L) {
+      expect_true(all(high_cov %in% names(filt_hi$trspacecds)))
+    }
+  }
+})
+
+
+test_that("prepare_ribostan_anno returns only periodicity-filtered uORFs", {
+  data(chr22_anno)
+  data(rpfs)
+
+  gtf <- tempfile(fileext = ".gtf")
+  ah <- AnnotationHub::AnnotationHub()
+  gencode32 <- ah[["AH75191"]]
+  GenomeInfoDb::seqlevels(gencode32) <- "chr22"
+  suppressWarnings(rtracklayer::export(gencode32, gtf, format = "GTF"))
+  on.exit(unlink(gtf), add = TRUE)
+
+  prep <- suppressMessages(prepare_ribostan_anno(
+    gtf,
+    fafile = {
+      fa <- here::here("chr22.fa")
+      if (!file.exists(fa)) {
+        library(BSgenome.Hsapiens.UCSC.hg38)
+        seq <- Biostrings::DNAStringSet(BSgenome.Hsapiens.UCSC.hg38[["chr22"]])
+        names(seq) <- "chr22"
+        Biostrings::writeXStringSet(seq, fa)
+      }
+      fa
+    },
+    rpfs,
+    n_cores = 1L,
+    return_psites = TRUE
+  ))
+  expect_true(isTRUE(prep$anno$uORF_periodicity_filtered))
+  expect_lte(sum(prep$anno$uORF), sum(chr22_anno$uORF))
+  expect_true(all(prep$psites$orf %in% names(prep$anno$trspacecds)))
 })

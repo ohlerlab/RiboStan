@@ -260,6 +260,146 @@ test_that("get_psite_gr emits one psite per (read, ORF) overlap", {
   expect_gte(length(psites), n_rpfs_with_orf * 0.5)
 })
 
+test_that("equivalent overlapping ORFs receive full identical periodicity signal", {
+  orfs <- GenomicRanges::GRanges(
+    seqnames = rep("tx1", 2L),
+    ranges = IRanges::IRanges(start = 1L, end = 60L),
+    strand = "+"
+  )
+  names(orfs) <- c("orfA", "orfB")
+  GenomeInfoDb::seqlengths(orfs) <- 60L
+  anno <- list(trspacecds = orfs, cdsgrl = orfs)
+
+  positions <- rep(seq.int(1L, 58L, by = 3L), each = 2L)
+  rpfs <- GenomicRanges::GRanges(
+    seqnames = rep("tx1", length(positions)),
+    ranges = IRanges::IRanges(start = positions, width = 1L),
+    strand = "+",
+    readlen = 1L
+  )
+  names(rpfs) <- paste0("read", seq_along(rpfs))
+  GenomeInfoDb::seqlengths(rpfs) <- 60L
+  offsets <- data.frame(
+    readlen = rep(1L, 3L),
+    phase = 0:2,
+    p_offset = 0L
+  )
+
+  psites <- get_psite_gr(
+    rpfs,
+    offsets,
+    anno,
+    apply_phase_shiftdf = FALSE
+  )
+  counts <- table(as.character(psites$orf))
+  expect_equal(as.integer(counts[c("orfA", "orfB")]),
+               rep(length(rpfs), 2L))
+  expect_true(all(psites$read_mult == 2L))
+
+  tested <- suppressMessages(ftest_orfs(psites, anno, n_cores = 1L))
+  tested <- tested[match(c("orfA", "orfB"), tested$orf_id), ]
+  expect_equal(tested$p.value[[1L]], tested$p.value[[2L]], tolerance = 0)
+  expect_equal(tested$q.value[[1L]], tested$q.value[[2L]], tolerance = 0)
+  expect_equal(tested$pct_inframe[[1L]], tested$pct_inframe[[2L]],
+               tolerance = 0)
+  expect_equal(tested$n_psites, rep(length(rpfs), 2L))
+  expect_equal(tested$orf_locus_id[[1L]], tested$orf_locus_id[[2L]])
+  expect_equal(tested$n_locus_aliases, c(2L, 2L))
+  expect_equal(sum(tested$locus_representative), 1L)
+})
+
+test_that("ORF locus identity distinguishes exon paths and reading frames", {
+  exact_a <- GenomicRanges::GRanges(
+    seqnames = "chr1",
+    ranges = IRanges::IRanges(c(100L, 200L), c(120L, 220L)),
+    strand = "+"
+  )
+  exact_b <- rev(exact_a)
+  different_path <- GenomicRanges::GRanges(
+    seqnames = "chr1",
+    ranges = IRanges::IRanges(c(100L, 190L), c(120L, 220L)),
+    strand = "+"
+  )
+  different_frame <- GenomicRanges::shift(exact_a, 1L)
+  grl <- GenomicRanges::GRangesList(
+    exact_a = exact_a,
+    exact_b = exact_b,
+    different_path = different_path,
+    different_frame = different_frame
+  )
+
+  keys <- Ribostan:::.orf_locus_key(grl)
+  expect_equal(keys[["exact_a"]], keys[["exact_b"]])
+  expect_false(keys[["exact_a"]] == keys[["different_path"]])
+  expect_false(keys[["exact_a"]] == keys[["different_frame"]])
+})
+
+test_that("locus statistics propagate across transcript aliases", {
+  ids <- c("txA_1", "txB_1")
+  trspace <- GenomicRanges::GRanges(
+    seqnames = c("txA", "txB"),
+    ranges = IRanges::IRanges(c(1L, 101L), width = 60L),
+    strand = "+"
+  )
+  names(trspace) <- ids
+  GenomeInfoDb::seqlengths(trspace) <- c(txA = 60L, txB = 160L)
+
+  genomic_orf <- GenomicRanges::GRanges(
+    seqnames = "chr1",
+    ranges = IRanges::IRanges(1000L, width = 60L),
+    strand = "+"
+  )
+  genomic_a <- genomic_orf
+  genomic_a$transcript_id <- "txA"
+  genomic_b <- genomic_orf
+  genomic_b$transcript_id <- "txB"
+  genomic <- GenomicRanges::GRangesList(txA_1 = genomic_a, txB_1 = genomic_b)
+  anno <- list(
+    trspacecds = trspace,
+    cdsgrl = genomic,
+    exonsgrl = GenomicRanges::GRangesList(txA = genomic_orf,
+                                          txB = genomic_orf),
+    trgiddf = data.frame(
+      orf_id = ids,
+      transcript_id = c("txA", "txB"),
+      gene_id = "gene1",
+      uORF = TRUE
+    ),
+    fafileob = NULL,
+    longtrs = character(),
+    uORF = stats::setNames(rep(TRUE, 2L), ids)
+  )
+
+  relative_positions <- seq.int(1L, 58L, by = 3L)
+  psites <- GenomicRanges::GRanges(
+    seqnames = rep(c("txA", "txB"), each = length(relative_positions)),
+    ranges = IRanges::IRanges(
+      c(relative_positions, relative_positions + 100L),
+      width = 1L
+    ),
+    strand = "+"
+  )
+  names(psites) <- rep(paste0("read", seq_along(relative_positions)), 2L)
+  psites$orf <- rep(ids, each = length(relative_positions))
+  GenomeInfoDb::seqlengths(psites) <- c(txA = 60L, txB = 160L)
+
+  filtered <- suppressMessages(periodicity_filter_uORFs(
+    psites, anno, remove = FALSE, min_psites = 0L, n_cores = 1L
+  ))
+  stats <- as.data.frame(S4Vectors::mcols(filtered$trspacecds))
+
+  expect_equal(stats$p.value[[1L]], stats$p.value[[2L]], tolerance = 0)
+  expect_equal(stats$q.value[[1L]], stats$q.value[[2L]], tolerance = 0)
+  expect_equal(stats$pct_inframe[[1L]], stats$pct_inframe[[2L]],
+               tolerance = 0)
+  expect_equal(stats$n_psites, rep(length(relative_positions), 2L))
+  expect_equal(stats$orf_locus_id[[1L]], stats$orf_locus_id[[2L]])
+  expect_equal(stats$n_locus_aliases, c(2L, 2L))
+  expect_equal(sum(stats$locus_representative), 1L)
+  expect_equal(stats$compatible_orf_ids,
+               rep(paste(ids, collapse = ","), 2L))
+})
+
 
 test_that("get_read_spmat row-normalises so each read has total weight 1", {
   data(chr22_anno)
@@ -351,7 +491,10 @@ test_that("periodicity_filter_uORFs prunes nested candidates before ftest_orfs r
   psites_aug <- c(psites, clone_psites)
 
   filt <- suppressMessages(
-    periodicity_filter_uORFs(psites_aug, anno, remove = FALSE, n_cores = 1)
+    periodicity_filter_uORFs(
+      psites_aug, anno, remove = FALSE, n_cores = 1,
+      nested_rule = "density"
+    )
   )
   m <- as.data.frame(S4Vectors::mcols(filt$trspacecds))
   rownames(m) <- names(filt$trspacecds)
@@ -363,7 +506,7 @@ test_that("periodicity_filter_uORFs prunes nested candidates before ftest_orfs r
 })
 
 
-test_that("ftest_orfs q.value is the BH adjustment of p.value across tested ORFs", {
+test_that("ftest_orfs adjusts p-values across unique ORF loci", {
   data(chr22_anno)
   data(rpfs)
   data(offsets_df)
@@ -371,6 +514,14 @@ test_that("ftest_orfs q.value is the BH adjustment of p.value across tested ORFs
 
   ft <- suppressMessages(ftest_orfs(psites, chr22_anno, n_cores = 1))
   surv <- ft[!is.na(ft$p.value), ]
-  expect_equal(surv$q.value, p.adjust(surv$p.value, method = "BH"),
+  unique_loci <- surv[surv$locus_representative, ]
+  expect_equal(unique_loci$q.value,
+               p.adjust(unique_loci$p.value, method = "BH"),
                tolerance = 1e-12)
+  expect_equal(
+    surv$q.value,
+    unique_loci$q.value[match(surv$orf_locus_id,
+                              unique_loci$orf_locus_id)],
+    tolerance = 0
+  )
 })

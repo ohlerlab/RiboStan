@@ -4,14 +4,18 @@
 \alias{get_offsets}
 \title{Get Offsets by maximizing p-sites within the CDS}
 \usage{
-get_offsets(input, anno, method = "cds_incl")
+get_offsets(input, anno, method = c("cds_incl", "metagene_peak"))
 }
 \arguments{
 \item{input}{GRanges object with RPFs or a bam file with RPFs}
 
 \item{anno}{annotation object}
 
-\item{method}{Method for p-site determination. Defaults to 'cds_incl'}
+\item{method}{Method for p-site determination. \code{"cds_incl"}
+(default) maximises P-sites falling within annotated CDS regions
+(Ribostan's own algorithm). \code{"metagene_peak"} reproduces
+RiboTaper's own metagene-peak procedure instead - see
+\code{\link{get_metagene_peak_offsets}}.}
 }
 \value{
 a dataframe with p-site offsets per readlength

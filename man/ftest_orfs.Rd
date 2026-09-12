@@ -14,14 +14,21 @@ ftest_orfs(psites, anno, n_cores = 1)
 \item{n_cores}{number of cores to use}
 }
 \value{
-a numeric vector with the spectral coefficient at 0.333...
-and the pvalue for the test
+A data frame with one row per ORF annotation. In addition to the
+periodicity statistics, it includes \code{orf_locus_id},
+\code{locus_representative}, \code{n_locus_aliases}, and
+\code{compatible_orf_ids} so transcript membership is preserved while locus
+calls can be counted once.
 }
 \description{
 Run Multitaper Tests on All ORFs
 }
 \details{
-This function applies a multitaper test to
+Candidates with exactly the same ordered genomic exon blocks and
+strand are one ORF locus. P-site records fanned out across aliases are
+deduplicated by read name and locus-relative position, the locus is tested
+once, BH correction is applied across unique tested loci, and the resulting
+statistics are propagated to every transcript alias.
 }
 \examples{
 data(chr22_anno)

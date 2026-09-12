@@ -136,6 +136,66 @@ get_incl_max_offsets <- function(rpfs, anno) {
 
 
 
+#' Estimate P-site offsets via RiboTaper's metagene-peak method
+#'
+#' Reproduces the offset-selection procedure RiboTaper's own pipeline uses
+#' (\code{create_metaplots.bash} + \code{metag.R}): build a metagene
+#' histogram of the distance from each read's 5' end to the nearest
+#' annotated start codon, separately per read length, and take the offset at
+#' the histogram's peak (mode) - i.e. the single "obvious spike" a human
+#' reads off the plotted PDF, rather than an inclusion-maximising search.
+#' Unlike \code{\link{get_incl_max_offsets}} (Ribostan's default), this
+#' resolves any integer nt offset and is not quantized to multiples of 3.
+#'
+#' RiboTaper itself picks one offset per read length only, with no
+#' dependence on an individual read's ORF-relative frame phase (its
+#' \code{P_sites_RNA_sites_calc.bash} takes a single offset per read
+#' length). The same offset is reported here for phase 0/1/2 purely to
+#' match \code{\link{get_psite_gr}}'s \code{(readlen, phase)} lookup schema;
+#' this mirrors \code{\link{get_incl_max_offsets}}'s own output, which is
+#' also phase-invariant in practice.
+#'
+#' @keywords Ribostan
+#' @author Dermot Harnett, \email{dermot.p.harnett@gmail.com}
+#'
+#' @param rpfs GRanges object with RPFs (as from \code{\link{get_readgr}}),
+#'   with a \code{readlen} mcol.
+#' @param anno annotation object (used for \code{anno$cdsstarts})
+#' @param search_range Integer vector of length 2: the window of raw
+#'   5'-end-to-start-codon distances (nt) to search for the peak in,
+#'   matching RiboTaper's plausible P-site range (default \code{c(-35,-5)},
+#'   i.e. the read's 5' end 5-35 nt upstream of the start codon).
+#'
+#' @return a data frame with columns \code{readlen}, \code{phase},
+#'   \code{p_offset} - directly usable as \code{offsets_df} in
+#'   \code{\link{get_psite_gr}}.
+#' @export
+#' @examples
+#' data(chr22_anno)
+#' data(rpfs)
+#' offsets_df <- get_metagene_peak_offsets(rpfs, chr22_anno)
+get_metagene_peak_offsets <- function(rpfs, anno, search_range = c(-35, -5)) {
+  stopifnot("readlen" %in% colnames(mcols(rpfs)))
+  cdsstarts <- anno$cdsstarts %>% unlist()
+  starts <- cdsstarts[as.character(GenomicRanges::seqnames(rpfs))]
+  distance <- GenomicRanges::start(rpfs) - starts
+  keep <- !is.na(distance) & distance >= search_range[1] & distance <= search_range[2]
+  df <- data.frame(
+    readlen = as.numeric(rpfs$readlen[keep]),
+    distance = distance[keep]
+  )
+  peaks <- df %>%
+    dplyr::count(.data$readlen, .data$distance, name = "n") %>%
+    dplyr::group_by(.data$readlen) %>%
+    dplyr::slice_max(order_by = .data$n, n = 1, with_ties = FALSE) %>%
+    dplyr::ungroup() %>%
+    dplyr::transmute(readlen = .data$readlen, p_offset = -.data$distance)
+  expand.grid(readlen = peaks$readlen, phase = 0:2) %>%
+    dplyr::inner_join(peaks, by = "readlen") %>%
+    dplyr::arrange(.data$readlen, .data$phase)
+}
+
+
 #' Get Offsets by maximizing p-sites within the CDS
 #'
 #'
@@ -144,7 +204,11 @@ get_incl_max_offsets <- function(rpfs, anno) {
 #'
 #' @param input GRanges object with RPFs or a bam file with RPFs
 #' @param anno annotation object
-#' @param method Method for p-site determination. Defaults to 'cds_incl'
+#' @param method Method for p-site determination. \code{"cds_incl"}
+#'   (default) maximises P-sites falling within annotated CDS regions
+#'   (Ribostan's own algorithm). \code{"metagene_peak"} reproduces
+#'   RiboTaper's own metagene-peak procedure instead - see
+#'   \code{\link{get_metagene_peak_offsets}}.
 #'
 #' @return a dataframe with p-site offsets per readlength
 #' @examples
@@ -159,7 +223,8 @@ get_incl_max_offsets <- function(rpfs, anno) {
 #'
 # TODO Add reference to a-p-site paper
 # input = ribobam
-get_offsets <- function(input, anno, method = "cds_incl") {
+get_offsets <- function(input, anno, method = c("cds_incl", "metagene_peak")) {
+  method <- match.arg(method)
   if (is.character(input) & (length(input) == 1)) {
     message("loading footprint data")
     rpfs <- get_readgr(input, anno)
@@ -170,6 +235,8 @@ get_offsets <- function(input, anno, method = "cds_incl") {
   #
   if (method == "cds_incl") {
     best_offsets <- get_incl_max_offsets(rpfs, anno)
+  } else if (method == "metagene_peak") {
+    best_offsets <- get_metagene_peak_offsets(rpfs, anno)
   } else {
     stop("not yet implemented")
   }

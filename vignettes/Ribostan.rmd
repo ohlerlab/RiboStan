@@ -64,13 +64,16 @@ testbam <- system.file('extdata', 'nchr22.bam', package='Ribostan',
 
 # Loading Data
 Ribostan includes various functionalities for a) filtering ORFs in an existing
-annotation and b) finding potential uORFs. By default, `load_annotation()` will
-keep only those ORFs which are multiples of 3 bp long, and which begin with a
-start codon and end wth a stop codon. Ribostan will also search for uORFs for
-those ORFs, by default allowing uORFs that are as short as 2 bp. The function
-`load_annotation()` carries out these filterng steps and creates an object
-with an attached fasta file for use by other Ribostan functions. The function
-`get_readgr()` loads ribosomal footprint alignments (including multimappers).
+annotation and b) finding potential uORF **sequence candidates**. By default,
+`load_annotation()` will keep only those ORFs which are multiples of 3 bp long,
+and which begin with a start codon and end wth a stop codon. Ribostan will also
+search for uORF candidates in 5' UTRs. **These candidates are not bona fide
+uORF calls until filtered by periodic RPF signal** (see
+`periodicity_filter_uORFs()` or the all-in-one `prepare_ribostan_anno()`).
+The function `load_annotation()` carries out these filtering steps and creates
+an object with an attached fasta file for use by other Ribostan functions. The
+function `get_readgr()` loads ribosomal footprint alignments (including
+multimappers).
 
 ```{r loadingdata, message=FALSE}
 # Load our annotation, filter out suspect ORFs, and find potential uORFs
@@ -84,16 +87,18 @@ uORF discovery is handled internally by `find_uorfs()`, a self-contained
 replacement for `ORFik::findUORFs`. It scans each transcript's 5' UTR (and, if
 `cds` is supplied as it is here, a little way into the start of the CDS) for
 start -> stop codon pairs. By default it only searches for `"ATG"` starts,
-matching the annotated-CDS convention; candidates that coincide with the
-annotated CDS boundary (fully within it, or sharing its start or stop) are
-dropped, since these aren't genuinely distinct uORFs. Callers can opt in to
-non-canonical start codons (e.g. `startCodon = c("ATG","CTG","GTG")`) via
-`findUORFs_args`, but should expect substantially more candidate uORFs as a
-result.
+matching the annotated-CDS convention, and requires at least one in-frame
+codon between start and stop (`minimumLength = 3`), so retained uORFs are
+at least 6 bp (2 codons) after stop-codon stripping---matching RiboTaper's
+minimum ORF track length. Candidates that coincide with the annotated CDS
+boundary (fully within it, or sharing its start or stop) are dropped, since
+these aren't genuinely distinct uORFs. Callers can opt in to non-canonical
+start codons (e.g. `startCodon = c("ATG","CTG","GTG")`) via `findUORFs_args`,
+but should expect substantially more candidate uORFs as a result.
 
 Every element of `chr22_anno$trspacecds` marked `TRUE` in `chr22_anno$uORF` is
-a discovered uORF, with a few extra mcols recording how it relates to the
-annotated CDS of its transcript:
+a **sequence candidate** uORF (not yet translation-supported), with a few
+extra mcols recording how it relates to the annotated CDS of its transcript:
 
 ```{r inspectuorfs, message=FALSE}
 uorf_ids <- names(chr22_anno$uORF)[chr22_anno$uORF]
@@ -110,8 +115,10 @@ knitr::kable(head(
 some transcript (this happens when a uORF only partially overlaps the CDS,
 rather than sharing its exact start/stop); `overlap_frame` and `out_of_phase`
 then describe whether that overlap is in-frame with the CDS. This is purely
-informational at this stage - actual periodicity-based filtering happens
-later, in `periodicity_filter_uORFs()`.
+informational at this stage. **Ribostan requires significant 3-nt periodicity
+in P-site coverage (plus minimum read support) before treating a candidate as a
+translated uORF**, matching RiboTaper-style evidence. That filtering happens
+in `periodicity_filter_uORFs()` (or in one step via `prepare_ribostan_anno()`).
 
 
 # From RPF Alignments to P-sites
@@ -179,18 +186,20 @@ allcodondt <- export_codon_dts(metacodondf, kl_offsets)
 # Periodicity and Quantification
 ORF periodicity is a good diagnostic tool for identifying bona fide translation
 (non periodic noise such as RPFs with ribosome-like footprints can generate
-ribo-seq signal in untranslated regions). The function
-`periodicity_filter_uORFs()` filters the uORFs found by `load_annotation()` by
-searching for periodicity in P-sites. Before running the (relatively
-expensive) periodicity test, it first calls `prune_nested_uorfs()`, which
-collapses each group of uORFs that share a transcript and a stop codon (i.e.
-one is nested within, or a truncation of, another) down to a single
-representative: the one with the highest P-site read density
-(reads / ORF length). This avoids spending time periodicity-testing redundant
-uORF candidates that could never both be real, distinct translation products.
-The F-test is then applied only to the surviving, non-redundant uORFs, and
-both the raw p-value and a Benjamini-Hochberg-corrected q-value are attached
-to the annotation. The function `get_ritpms()` furthermore carries out
+ribo-seq signal in untranslated regions). **Ribostan uORF calls require
+periodic RPF evidence**: `periodicity_filter_uORFs()` drops sequence candidates
+that lack significant 3-nt periodicity (BH q < 0.05 by default) or sufficient
+P-site coverage (`min_psites = 6`, matching RiboTaper's `P_sites_sum > 5`
+requirement). Before running the (relatively expensive) periodicity test, it
+the default RiboTaper-compatible nested rule tests the candidates and keeps one
+representative from each group that shares a transcript and stop codon. Its
+choice uses periodicity and intervening P-site support to distinguish genuine
+upstream initiation from leaky scanning. `nested_rule = "density"` instead
+pre-prunes each group to the candidate with the highest P-site density. Both
+the raw p-value and a Benjamini-Hochberg-corrected q-value are attached to the
+annotation. Alternatively, `prepare_ribostan_anno(gtf, fafile, rpfs)` runs
+annotation loading, offset estimation, P-site assignment, and this filter in
+one call. The function `get_ritpms()` furthermore carries out
 optimization of ribosome densities, and similarly to software like Salmon or
 RSEM, performs isoform-aware quantification. Multimapping P-sites can then be
 sampled according to these TPMs, to give an estimate of true ribosome

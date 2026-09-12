@@ -600,16 +600,27 @@ convert_gtf <- function(anno, keep_cols){
 #'
 #' @param gtf A GTF with gene annotation
 #' @param fafile FaFile; path to a genomic Fasta file
-#' @param add_uorfs Whether to look for and include uORFs
+#' @param add_uorfs Whether to search 5' UTRs for uORF sequence candidates.
+#'   Candidates are not translation-supported until
+#'   \code{\link{periodicity_filter_uORFs}} or
+#'   \code{\link{prepare_ribostan_anno}} is run on ribo-seq P-sites.
 #' @param ignore_orf_validity Boolean; flag whether to include ORFs
 #'     missing a valid stop codon
 #' @param keep_cols columns to save from the gtf metadata
 #' @param DEFAULT_CIRC_SEQS default chromsoomes to treat as circular
 #' @param findUORFs_args Additional arguments to pass to \code{find_uorfs}
-#'   (e.g. \code{c(minimumLength=0, longestORF=FALSE)})
+#'   as a named list (e.g. \code{list(minimumLength=3, longestORF=FALSE)}).
+#'   Note that RiboTaper itself only ever considers AUG-initiated ORFs (see
+#'   \code{\link{find_uorfs}}'s \code{startCodon} docs) - passing
+#'   non-canonical start codons here (e.g.
+#'   \code{list(startCodon=c("ATG","CTG","GTG"))}) will find uORFs RiboTaper
+#'   structurally cannot ever report, so it is not a lever for matching
+#'   RiboTaper's calls. The default \code{minimumLength=3} matches
+#'   RiboTaper's minimum ORF track length (\code{length > 5} nt).
 #' @details This takes only coding sequences which are a multiple of 3bp and
-#' have a start and a stop on either end. it always returns coding sequences
-#' without the stops, regardless of their extent in the input.
+#' have a start and a stop on either end. Annotated CDS ranges exclude their
+#' stop codons; uORF ranges retain the first stop-codon nucleotide to match
+#' RiboTaper's periodicity-test window.
 #' @return a list containing annotation objects used by other functions.
 #' @export
 #' @examples
@@ -631,7 +642,7 @@ load_annotation <- function(
     keep_cols = 
       c("gene_id", "transcript_id", "gene_name", "type"),
     DEFAULT_CIRC_SEQS=NULL,
-    findUORFs_args = c(minimumLength=0, longestORF = FALSE)
+    findUORFs_args = list(minimumLength = 3, longestORF = FALSE)
     ) {
   if(is.null(DEFAULT_CIRC_SEQS)){
     DEFAULT_CIRC_SEQS <- unique(
@@ -684,15 +695,20 @@ load_annotation <- function(
   #add uORFs
   if (add_uorfs) {
     message("adding uORFs..")
+    uorf_search_cdsgrl <- if (ignore_orf_validity) {
+      cdsgrl
+    } else {
+      get_cdsgrl(anno, fafileob, TRUE)
+    }
     anno$phase <- NULL
     txdb <- txdbmaker::makeTxDbFromGRanges(anno)
     fiveutrs <- GenomicFeatures::fiveUTRsByTranscript(txdb, use.names = TRUE)
-    validutrs <- names(fiveutrs)%>%intersect(names(cdsgrl))
+    validutrs <- names(fiveutrs) %>% intersect(names(uorf_search_cdsgrl))
     fiveutrs <- fiveutrs[validutrs]
     alluORFs <- do.call(what=find_uorfs, args = c(findUORFs_args,list(
       fiveUTRs = fiveutrs,
       fa = fafile,
-      cds = cdsgrl[validutrs]
+      cds = uorf_search_cdsgrl[validutrs]
     )))
     alluORFs <- alluORFs %>%
       {
@@ -713,11 +729,23 @@ load_annotation <- function(
     } else {
       character()
     }
-    # remove stop codon from uORFs
+    # Match RiboTaper's test window: retain the first stop-codon nucleotide.
     alluORFs <- alluORFs %>% split(., names(.))
     stopifnot(is(alluORFs, "GRangesList"))
     seqinfo(alluORFs) <- seqinfo(anno)
-    alluORFs <- alluORFs %>% resize_grl(sum(width(.)) - 3, "start")
+    alluORFs <- alluORFs %>% resize_grl(sum(width(.)) - 2, "start")
+    # Drop sub-minimum uORFs after stop-window trimming (RiboTaper length>5 nt).
+    uorf_widths <- vapply(alluORFs, function(x) sum(GenomicRanges::width(x)),
+                          integer(1))
+    min_uorf_width <- 6L
+    too_short <- uorf_widths < min_uorf_width
+    if (any(too_short)) {
+      message(str_interp(
+        "dropped ${sum(too_short)} uORFs shorter than ${min_uorf_width} bp",
+        " after stop-window trimming"
+      ))
+      alluORFs <- alluORFs[!too_short]
+    }
     # add uorfs to cdsgrl
     cdsgrl <- c(cdsgrl, alluORFs)
     # now modify metadata
@@ -810,6 +838,66 @@ load_annotation <- function(
     )
   )
   return(outanno)
+}
+
+
+#' Build annotation with translation-supported uORFs only
+#'
+#' Convenience wrapper that runs \code{\link{load_annotation}},
+#' assigns P-sites from ribo-seq footprints, and keeps only uORFs with
+#' significant 3-nt periodicity and sufficient P-site coverage (see
+#' \code{\link{periodicity_filter_uORFs}}). This is the recommended entry
+#' point when uORF calls should match RiboTaper-style translation evidence.
+#'
+#' @param gtf GTF annotation file path or GRanges.
+#' @param fafile Path to a genomic FASTA matching \code{gtf}.
+#' @param rpfs GRanges of ribo-seq footprints (e.g. from \code{\link{get_readgr}}).
+#' @param add_uorfs Whether to search for uORF sequence candidates before
+#'   periodicity filtering.
+#' @param alpha BH FDR threshold for the multitaper periodicity test.
+#' @param min_psites Minimum P-sites per uORF (default \code{6}; RiboTaper
+#'   uses \code{P_sites_sum > 5}).
+#' @param n_cores Cores for multitaper tests.
+#' @param return_psites If \code{TRUE}, return a list with \code{anno},
+#'   \code{offsets_df}, and \code{psites}; otherwise return the filtered
+#'   annotation only.
+#' @param ... Additional arguments passed to \code{\link{load_annotation}}.
+#' @return Filtered annotation object, or a list when \code{return_psites =
+#'   TRUE}.
+#' @export
+#' @examples
+#' \dontrun{
+#' gtf <- system.file("extdata", "gcv37.anno.chr22.gtf", package = "Ribostan")
+#' fafile <- system.file("extdata", "chr22.fa.gz", package = "Ribostan")
+#' testbam <- system.file("extdata", "nchr22.bam", package = "Ribostan")
+#' anno <- load_annotation(gtf, fafile, add_uorfs = TRUE)
+#' rpfs <- get_readgr(testbam, anno)
+#' anno <- prepare_ribostan_anno(gtf, fafile, rpfs)
+#' }
+prepare_ribostan_anno <- function(gtf, fafile, rpfs, add_uorfs = TRUE,
+                                  alpha = 0.05, min_psites = 6L,
+                                  n_cores = 1L, return_psites = FALSE,
+                                  ...) {
+  anno <- load_annotation(gtf, fafile, add_uorfs = add_uorfs, ...)
+  if (!add_uorfs) {
+    if (return_psites) {
+      offsets_df <- get_offsets(rpfs, anno)
+      psites <- get_psite_gr(rpfs, offsets_df, anno)
+      return(list(anno = anno, offsets_df = offsets_df, psites = psites))
+    }
+    return(anno)
+  }
+  offsets_df <- get_offsets(rpfs, anno)
+  psites <- get_psite_gr(rpfs, offsets_df, anno)
+  anno <- periodicity_filter_uORFs(
+    psites, anno,
+    remove = TRUE, alpha = alpha, min_psites = min_psites, n_cores = n_cores
+  )
+  if (return_psites) {
+    psites <- psites[psites$orf %in% names(anno$trspacecds)]
+    return(list(anno = anno, offsets_df = offsets_df, psites = psites))
+  }
+  anno
 }
 
 
