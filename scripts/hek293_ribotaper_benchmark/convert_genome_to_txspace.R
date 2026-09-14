@@ -41,7 +41,9 @@ out_rds <- file.path(workdir, Sys.getenv("HEK293_PROJECTED_RDS",
 stopifnot(file.exists(gtf), file.exists(fafile), file.exists(bam))
 
 message("Loading annotation (", gtf_cfg$name, ") ...")
-anno <- load_annotation(gtf, fafile, add_uorfs = TRUE)
+# Projection only needs transcript exon structures. Discovering every uORF
+# candidate here is expensive and cannot change the projected read coordinates.
+anno <- load_annotation(gtf, fafile, add_uorfs = FALSE)
 
 message("Reading primary-only genome BAM: ", bam)
 flags <- Rsamtools::scanBamFlag(isUnmappedQuery = FALSE)
@@ -75,23 +77,10 @@ read_names <- names(gal)
 gr <- as(gal, "GRanges")
 seqlevels(gr) <- sub("\\|.*", "", seqlevels(gr))
 
-# anno$exonsgrl is NOT transcript-unique: load_annotation() builds it by
-# indexing a transcript-keyed exon list with a per-ORF transcript_id vector
-# (one entry per CDS *and* per uORF candidate on that transcript), for
-# internal use by get_trspace_cds(). That replicated form leaks out as the
-# public anno$exonsgrl field (pinned by test-annotation.R's length check), so
-# any caller that uses the whole object as a mapToTranscripts()/similar
-# target - rather than looking it up by name - must deduplicate first, or
-# every read landing on a transcript with N annotated ORFs gets broadcast
-# into N near-identical output rows, inflating downstream P-site counts by a
-# factor of N (discovered via direct read-count-vs-P-site-count forensics on
-# HEK293 candidate ENST00000598463.1_6: 542 unique reads produced 5420
-# psites, exactly 10x, matching that transcript's 1 CDS + 9 uORF candidates).
+# Keep projection targets transcript-unique defensively.
 exonsgrl_uniq <- anno$exonsgrl[!duplicated(names(anno$exonsgrl))]
 message("Projecting into transcript space against ", length(exonsgrl_uniq),
-        " annotated transcripts (deduplicated from ", length(anno$exonsgrl),
-        " anno$exonsgrl entries, which repeats each transcript once per ",
-        "annotated ORF - see comment above) ...")
+        " annotated transcripts ...")
 mapped <- GenomicFeatures::mapToTranscripts(gr, exonsgrl_uniq, ignore.strand = FALSE)
 message("Projected alignments (read x compatible-transcript rows): ", length(mapped))
 message("Unique reads represented: ", length(unique(mapped$xHits)), " / ",

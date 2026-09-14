@@ -9,6 +9,10 @@ set.seed(104L)
 context_radius <- as.integer(Sys.getenv("HEK293_SEQUENCE_CONTEXT_RADIUS", "3"))
 n_folds <- as.integer(Sys.getenv("HEK293_SEQUENCE_FOLDS", "5"))
 max_train <- as.integer(Sys.getenv("HEK293_SEQUENCE_MAX_TRAIN", "200000"))
+max_calibration <- as.integer(Sys.getenv(
+  "HEK293_SEQUENCE_MAX_CALIBRATION",
+  "500000"
+))
 
 phase_score <- function(frame) {
   counts <- tabulate(as.integer(frame) + 1L, nbins = 3L)
@@ -36,7 +40,10 @@ predict_phase_model <- function(model, data) {
     }
     stats::predict(component, newdata = data, type = "response")
   }, numeric(nrow(data)))
-  max.col(probabilities, ties.method = "first") - 1L
+  probabilities[!is.finite(probabilities)] <- 0
+  prediction <- max.col(probabilities, ties.method = "first") - 1L
+  prediction[rowSums(probabilities) == 0] <- 0L
+  prediction
 }
 
 model_metrics <- function(data, prediction, label) {
@@ -263,6 +270,17 @@ sample_training_rows <- function(index) {
   if (length(index) > max_train) sample(index, max_train) else index
 }
 
+predict_crossfit <- function(models, data, folds) {
+  prediction <- integer(nrow(data))
+  for (fold in seq_along(models)) {
+    index <- which(folds == fold)
+    if (length(index)) {
+      prediction[index] <- predict_phase_model(models[[fold]], data[index, ])
+    }
+  }
+  prediction
+}
+
 call_table <- function(psites, anno, n_cores) {
   tested <- periodicity_filter_uORFs(
     psites,
@@ -321,7 +339,19 @@ run_real <- function(workdir, output_dir) {
 
   anno_cds <- load_annotation(gtf, fasta, add_uorfs = FALSE)
   rpfs <- readRDS(projected_rds)
-  offsets <- read.delim(offset_path, stringsAsFactors = FALSE)
+  offsets <- if (file.exists(offset_path)) {
+    read.delim(offset_path, stringsAsFactors = FALSE)
+  } else {
+    calculated <- get_offsets(rpfs, anno_cds, method = "metagene_peak")
+    write.table(
+      calculated,
+      offset_path,
+      sep = "\t",
+      row.names = FALSE,
+      quote = FALSE
+    )
+    calculated
+  }
   cds <- anno_cds$trspacecds
   hits <- findOverlaps(rpfs, cds, ignore.strand = TRUE)
   first_hit <- !duplicated(queryHits(hits))
@@ -353,6 +383,9 @@ run_real <- function(workdir, output_dir) {
     observed_frame = (phase + p_offset) %% 3L,
     correction = factor((-(phase + p_offset)) %% 3L, levels = 0:2)
   )
+  if (nrow(calibration) > max_calibration) {
+    calibration <- calibration[sample(nrow(calibration), max_calibration), ]
+  }
   transcript_ids <- intersect(
     unique(calibration$transcript_id),
     names(anno_cds$exonsgrl)
@@ -370,6 +403,8 @@ run_real <- function(workdir, output_dir) {
   calibration$pred_sequence <- NA_integer_
   calibration$pred_permuted <- NA_integer_
   sequence_models <- vector("list", n_folds)
+  length_models <- vector("list", n_folds)
+  permutation_models <- vector("list", n_folds)
 
   for (fold in seq_len(n_folds)) {
     train_index <- which(calibration$fold != fold)
@@ -377,18 +412,20 @@ run_real <- function(workdir, output_dir) {
     test_index <- which(calibration$fold == fold)
     train <- calibration[train_index, ]
     sequence_models[[fold]] <- fit_phase_model(train, sequence_features)
-    length_model <- fit_phase_model(train, "readlen")
+    length_models[[fold]] <- fit_phase_model(train, "readlen")
     permuted <- train
     permuted$correction <- sample(permuted$correction)
-    permutation_model <- fit_phase_model(permuted, sequence_features)
+    permutation_models[[fold]] <- fit_phase_model(
+      permuted, sequence_features
+    )
     calibration$pred_length[test_index] <- predict_phase_model(
-      length_model, calibration[test_index, ]
+      length_models[[fold]], calibration[test_index, ]
     )
     calibration$pred_sequence[test_index] <- predict_phase_model(
       sequence_models[[fold]], calibration[test_index, ]
     )
     calibration$pred_permuted[test_index] <- predict_phase_model(
-      permutation_model, calibration[test_index, ]
+      permutation_models[[fold]], calibration[test_index, ]
     )
   }
 
@@ -407,7 +444,21 @@ run_real <- function(workdir, output_dir) {
     quote = FALSE
   )
 
-  anno_full <- load_annotation(gtf, fasta, add_uorfs = TRUE)
+  reference <- read.delim(
+    Sys.getenv("HEK293_PARITY_UORFS", "ribotaper_hek293_uorfs.tsv"),
+    stringsAsFactors = FALSE
+  )
+  imported_gtf <- rtracklayer::import(gtf, format = "gtf")
+  target_genes <- unique(as.character(
+    imported_gtf$gene_id[
+      as.character(imported_gtf$transcript_id) %in%
+        unique(reference$transcript_id)
+    ]
+  ))
+  keep_gtf <- as.character(imported_gtf$gene_id) %in% target_genes
+  target_gtf <- tempfile(fileext = ".gtf")
+  rtracklayer::export(imported_gtf[keep_gtf], target_gtf, format = "gtf")
+  anno_full <- load_annotation(target_gtf, fasta, add_uorfs = TRUE)
   baseline_psites <- get_psite_gr(
     rpfs, offsets, anno_full, apply_phase_shiftdf = FALSE
   )
@@ -425,26 +476,28 @@ run_real <- function(workdir, output_dir) {
   )
   psite_data <- extract_context(psite_data, transcript_sequences)
   psite_fold <- unname(gene_folds[psite_data$gene])
-  correction <- integer(nrow(psite_data))
-  for (fold in seq_len(n_folds)) {
-    index <- which(psite_fold == fold)
-    if (length(index)) {
-      correction[index] <- predict_phase_model(
-        sequence_models[[fold]],
-        psite_data[index, ]
-      )
-    }
-  }
-  corrected_psites <- shift(baseline_psites, correction)
-  corrected_psites <- corrected_psites[!Ribostan:::is_out_of_bounds(
-    corrected_psites
-  )]
+  corrections <- list(
+    read_length = predict_crossfit(length_models, psite_data, psite_fold),
+    sequence = predict_crossfit(sequence_models, psite_data, psite_fold),
+    permuted_labels = predict_crossfit(
+      permutation_models, psite_data, psite_fold
+    )
+  )
+  corrected_psites <- lapply(corrections, function(correction) {
+    result <- shift(baseline_psites, correction)
+    result[!Ribostan:::is_out_of_bounds(result)]
+  })
 
   baseline_calls <- call_table(baseline_psites, anno_full, n_cores)
-  corrected_calls <- call_table(corrected_psites, anno_full, n_cores)
+  corrected_calls <- lapply(
+    corrected_psites,
+    call_table,
+    anno = anno_full,
+    n_cores = n_cores
+  )
   call_delta <- merge(
     baseline_calls,
-    corrected_calls,
+    corrected_calls$sequence,
     by = "orf_locus_id",
     suffixes = c("_baseline", "_sequence"),
     all = TRUE
@@ -458,7 +511,55 @@ run_real <- function(workdir, output_dir) {
     row.names = FALSE,
     quote = FALSE
   )
+  call_sets <- c(list(baseline = baseline_calls), corrected_calls)
+  for (label in names(call_sets)) {
+    write.table(
+      call_sets[[label]],
+      file.path(output_dir, paste0("sequence_bias_real_calls_", label, ".tsv")),
+      sep = "\t",
+      row.names = FALSE,
+      quote = FALSE
+    )
+  }
+  call_summary <- do.call(rbind, lapply(names(call_sets), function(label) {
+    data.frame(
+      model = label,
+      calls = sum(call_sets[[label]]$call),
+      stringsAsFactors = FALSE
+    )
+  }))
+  start_call_path <- Sys.getenv(
+    "HEK293_SEQUENCE_START_CALLS",
+    "ribostan_start_codon_delta.tsv"
+  )
+  if (file.exists(start_call_path)) {
+    start_calls <- read.delim(start_call_path, stringsAsFactors = FALSE)
+    atg <- start_calls[
+      start_calls$scenario == "ATG" & start_calls$start_codon == "ATG",
+    ]
+    published_key <- paste(
+      reference$transcript_id, reference$tx_start, reference$tx_end
+    )
+    atg_key <- paste(atg$transcript_id, atg$tx_start, atg$tx_end)
+    published_loci <- unique(atg$orf_locus_id[atg_key %in% published_key])
+    call_summary$published <- vapply(
+      call_sets,
+      function(result) sum(result$call &
+        result$orf_locus_id %in% published_loci),
+      integer(1L)
+    )
+    call_summary$nonpublished <- call_summary$calls -
+      call_summary$published
+  }
+  write.table(
+    call_summary,
+    file.path(output_dir, "sequence_bias_real_call_summary.tsv"),
+    sep = "\t",
+    row.names = FALSE,
+    quote = FALSE
+  )
   print(real_metrics)
+  print(call_summary)
   print(with(call_delta, table(call_baseline, call_sequence)))
 }
 

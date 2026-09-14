@@ -258,6 +258,39 @@ or similar functions that iterate every list element (rather than doing
 just the first match and are unaffected), deduplicate first:
 `anno$exonsgrl[!duplicated(names(anno$exonsgrl))]`.
 
+## Sequence-dependent cleavage-bias experiment
+
+`compare_sequence_bias_offsets.R` tests whether the sequence within 3 nt of
+each footprint end predicts a residual phase correction beyond read length
+alone. Models are trained on annotated CDS reads with five-fold gene-level
+cross-fitting; no read is corrected by a model trained on its gene. The
+permuted-label model is the leakage/null control.
+
+The synthetic benchmark recovered a known sequence-dependent cleavage rule:
+held-out correction accuracy rose from 49.9% (constant/read-length baselines)
+to 70.2%, phase-0 fraction rose from 49.9% to 70.2%, and the uniform-phase
+false-positive rate remained 5.4%. On synthetic data without cleavage bias,
+the model correctly made no adjustments.
+
+On 500,000 held-out HEK293 CDS reads:
+
+- Constant offsets: 73.09% phase 0; 182 BH uORF calls, 164 published.
+- Read length only: 75.94% phase 0; 241 calls, 216 published.
+- End sequence + read length: 76.87% phase 0; 202 calls, 178 published.
+- Permuted labels: 73.09% phase 0; 182 calls, 164 published.
+
+The sequence features add only 0.93 percentage points beyond read length and
+produce substantial call churn (64 gains and 44 losses versus constant
+offsets). They recover fewer published calls than the simpler read-length-only
+correction and slightly reduce the fraction of calls matching published
+RiboTaper uORFs (90.1% to 88.1%). **Decision: do not add sequence-dependent
+P-site correction to Ribostan.** The stronger read-length-only result instead
+supports evaluating the existing per-length offset calibration directly.
+
+The projection benchmark now loads annotation with `add_uorfs = FALSE` because
+read projection needs exon structures only. This avoids an unnecessary
+full-genome uORF search without changing projected coordinates.
+
 ## Notes
 
 - RNA-seq for RiboTaper normalization was GSM1306496 (external study); we use **published uORF BED** as reference rather than re-running RiboTaper.

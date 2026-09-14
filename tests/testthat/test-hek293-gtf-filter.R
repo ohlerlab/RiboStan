@@ -1,10 +1,14 @@
 # Unit tests for RiboTaper-style GTF filtering (HEK293 benchmark helper).
 
 test_that("filter_gtf_ribotaper_style applies CCDS+APPRIS transcript selection per gene", {
-  bench_dir <- normalizePath(
-    file.path(testthat::test_path(), "..", "..", "scripts", "hek293_ribotaper_benchmark"),
-    mustWork = TRUE
+  bench_dir <- file.path(
+    testthat::test_path(), "..", "..", "scripts", "hek293_ribotaper_benchmark"
   )
+  testthat::skip_if_not(
+    dir.exists(bench_dir),
+    "benchmark scripts are not installed with the package"
+  )
+  bench_dir <- normalizePath(bench_dir, mustWork = TRUE)
   source(file.path(bench_dir, "hek293_gtf_config.R"), local = TRUE)
 
   tmp <- tempfile("gtf_filter_")
